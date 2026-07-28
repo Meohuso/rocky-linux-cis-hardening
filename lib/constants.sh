@@ -40,9 +40,12 @@ load_constants() {
 
     readonly RLCH_PROJECT_NAME="Rocky Linux CIS Hardening Framework"
 
-    readonly RLCH_ROOT_DIR="$(
-        cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
-    )"
+    if ! RLCH_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; then
+        printf '%s\n' "Unable to determine the project root directory." >&2
+        return 1
+    fi
+
+    readonly RLCH_ROOT_DIR
 
     readonly RLCH_LIB_DIR="${RLCH_ROOT_DIR}/lib"
     readonly RLCH_CONFIG_DIR="${RLCH_ROOT_DIR}/config"
@@ -57,12 +60,17 @@ load_constants() {
     readonly RLCH_VERSION_FILE="${RLCH_ROOT_DIR}/VERSION"
 
     if [[ -r "${RLCH_VERSION_FILE}" ]]; then
-        readonly RLCH_VERSION="$(
-            head -n 1 "${RLCH_VERSION_FILE}" | tr -d '[:space:]'
-        )"
+        if ! RLCH_VERSION="$(
+            tr -d '[:space:]' < "${RLCH_VERSION_FILE}"
+        )"; then
+            printf '%s\n' "Unable to read version file." >&2
+            return 1
+        fi
     else
-        readonly RLCH_VERSION="0.0.0-dev"
+        RLCH_VERSION="0.0.0-dev"
     fi
+
+    readonly RLCH_VERSION
 
     readonly RLCH_CONSTANTS_INITIALIZED=1
 }
