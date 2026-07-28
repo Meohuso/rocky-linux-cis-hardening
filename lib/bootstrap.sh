@@ -11,9 +11,15 @@ if [[ -n "${RLCH_BOOTSTRAP_LOADED:-}" ]]; then
 fi
 readonly RLCH_BOOTSTRAP_LOADED=1
 
-readonly RLCH_BOOTSTRAP_LIB_DIR="$(
+if ! RLCH_BOOTSTRAP_LIB_DIR="$(
     cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
-)"
+)"; then
+    printf '%s\n' \
+        "RLCH bootstrap error: Unable to determine the library directory." >&2
+    return 1
+fi
+
+readonly RLCH_BOOTSTRAP_LIB_DIR
 
 ##
 # Print a bootstrap error before the framework logging subsystem is available.
