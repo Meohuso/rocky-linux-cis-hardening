@@ -11,6 +11,7 @@
 if [[ -n "${RLCH_SYSTEM_LOADED:-}" ]]; then
     return 0
 fi
+
 readonly RLCH_SYSTEM_LOADED=1
 
 readonly RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE="/etc/os-release"
@@ -85,11 +86,11 @@ system_require_command() {
 ##
 system_os_release_value() {
     local key_name="${1:-}"
-    local os_release_file="${
-        2:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}
-    }"
+    local os_release_file
     local line
     local value
+
+    os_release_file="${2:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}}"
 
     if [[ -z "${key_name}" ]] ||
         [[ ! "${key_name}" =~ ^[A-Z0-9_]+$ ]]; then
@@ -138,9 +139,9 @@ system_os_release_value() {
 #   1 otherwise.
 ##
 system_operating_system_id() {
-    local os_release_file="${
-        1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}
-    }"
+    local os_release_file
+
+    os_release_file="${1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}}"
 
     system_os_release_value "ID" "${os_release_file}"
 }
@@ -159,9 +160,9 @@ system_operating_system_id() {
 #   1 otherwise.
 ##
 system_operating_system_name() {
-    local os_release_file="${
-        1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}
-    }"
+    local os_release_file
+
+    os_release_file="${1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}}"
 
     system_os_release_value "NAME" "${os_release_file}"
 }
@@ -180,9 +181,9 @@ system_operating_system_name() {
 #   1 otherwise.
 ##
 system_operating_system_version_id() {
-    local os_release_file="${
-        1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}
-    }"
+    local os_release_file
+
+    os_release_file="${1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}}"
 
     system_os_release_value "VERSION_ID" "${os_release_file}"
 }
@@ -201,11 +202,11 @@ system_operating_system_version_id() {
 #   1 otherwise.
 ##
 system_operating_system_major_version() {
-    local os_release_file="${
-        1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}
-    }"
+    local os_release_file
     local version_id
     local major_version
+
+    os_release_file="${1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}}"
 
     if ! version_id="$(
         system_operating_system_version_id "${os_release_file}"
@@ -233,10 +234,10 @@ system_operating_system_major_version() {
 #   1 otherwise.
 ##
 system_is_rocky_linux() {
-    local os_release_file="${
-        1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}
-    }"
+    local os_release_file
     local operating_system_id
+
+    os_release_file="${1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}}"
 
     if ! operating_system_id="$(
         system_operating_system_id "${os_release_file}"
@@ -258,10 +259,10 @@ system_is_rocky_linux() {
 #   1 otherwise.
 ##
 system_is_rocky_linux_10() {
-    local os_release_file="${
-        1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}
-    }"
+    local os_release_file
     local major_version
+
+    os_release_file="${1:-${RLCH_SYSTEM_OS_RELEASE_FILE:-${RLCH_SYSTEM_DEFAULT_OS_RELEASE_FILE}}}"
 
     if ! system_is_rocky_linux "${os_release_file}"; then
         return 1
@@ -385,10 +386,10 @@ system_is_systemd() {
 #   1 otherwise.
 ##
 system_boot_id() {
-    local boot_id_file="${
-        1:-${RLCH_SYSTEM_BOOT_ID_FILE:-${RLCH_SYSTEM_DEFAULT_BOOT_ID_FILE}}
-    }"
+    local boot_id_file
     local boot_id
+
+    boot_id_file="${1:-${RLCH_SYSTEM_BOOT_ID_FILE:-${RLCH_SYSTEM_DEFAULT_BOOT_ID_FILE}}}"
 
     if ! readable_file_exists "${boot_id_file}"; then
         return 1
@@ -421,11 +422,11 @@ system_boot_id() {
 #   1 otherwise.
 ##
 system_uptime_seconds() {
-    local uptime_file="${
-        1:-${RLCH_SYSTEM_UPTIME_FILE:-${RLCH_SYSTEM_DEFAULT_UPTIME_FILE}}
-    }"
+    local uptime_file
     local uptime_value
     local uptime_seconds
+
+    uptime_file="${1:-${RLCH_SYSTEM_UPTIME_FILE:-${RLCH_SYSTEM_DEFAULT_UPTIME_FILE}}}"
 
     if ! readable_file_exists "${uptime_file}"; then
         return 1
