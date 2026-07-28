@@ -99,6 +99,9 @@ module_matches_filter() {
         return 1
     fi
 
+    # The right-hand operand must remain unquoted because the configured
+    # module filter is intentionally evaluated as a shell glob pattern.
+    # shellcheck disable=SC2053
     [[ "${module_identifier}" == ${module_filter} ]]
 }
 
