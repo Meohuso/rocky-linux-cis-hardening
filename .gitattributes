@@ -1,0 +1,35 @@
+# Auto detect text files
+* text=auto
+
+# Shell
+*.sh text eol=lf
+
+# Configuration
+*.conf text eol=lf
+*.service text eol=lf
+*.rules text eol=lf
+*.sysctl text eol=lf
+
+# Documentation
+*.md text eol=lf
+*.txt text eol=lf
+
+# YAML
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# GitHub
+.github/** text eol=lf
+
+# Windows scripts
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.zip binary
