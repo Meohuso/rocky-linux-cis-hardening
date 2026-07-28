@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#
+# Rocky Linux CIS Hardening Framework
+#
+# SPDX-License-Identifier: MIT
+#
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/bootstrap.sh
+source "${SCRIPT_DIR}/lib/bootstrap.sh"
+
+main "$@"

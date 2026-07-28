@@ -1,0 +1,81 @@
+# -----------------------------------------------------------------------------
+# Rocky Linux CIS Hardening Framework
+# Git Ignore
+# -----------------------------------------------------------------------------
+
+# Logs
+logs/
+*.log
+
+# Reports
+reports/
+*.html
+*.xml
+*.json
+
+# Runtime state
+state/*
+!state/.gitkeep
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+*~
+
+# Backups
+*.bak
+*.orig
+*.old
+*.save
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.code-workspace
+
+# Vim
+*.un~
+
+# Eclipse
+.project
+.settings/
+.classpath
+
+# JetBrains
+*.iml
+
+# Shell history
+.bash_history
+
+# Archives
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+
+# Generated documentation
+site/
+
+# Coverage
+coverage/
+*.coverage
+
+# Local configuration
+config.local.sh
+
+# Test artifacts
+tests/output/
+tests/tmp/
+
+# Keep empty directories
+!logs/.gitkeep
+!reports/.gitkeep
+!state/.gitkeep
