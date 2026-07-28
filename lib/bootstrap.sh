@@ -89,6 +89,7 @@ _bootstrap_load_core_libraries() {
         "configuration.sh"
         "logging.sh"
         "system.sh"
+        "filesystem.sh"
         "modules.sh"
         "module_api.sh"
         "execution.sh"
