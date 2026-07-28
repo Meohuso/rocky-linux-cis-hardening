@@ -88,6 +88,7 @@ _bootstrap_load_core_libraries() {
         "error.sh"
         "configuration.sh"
         "logging.sh"
+        "modules.sh"
     )
 
     for library_name in "${libraries[@]}"; do
@@ -113,21 +114,30 @@ show_help() {
 ${RLCH_PROJECT_NAME}
 
 Usage:
-  rlch [COMMAND]
+  rlch [COMMAND] [ARGUMENT]
   rlch [OPTION]
 
 Commands:
-  help              Display this help message.
-  version           Display the framework version.
+  help                  Display this help message.
+  version               Display the framework version.
+  modules [FILTER]      List discovered modules.
 
 Options:
-  -h, --help        Display this help message.
-  -V, --version     Display the framework version.
+  -h, --help            Display this help message.
+  -V, --version         Display the framework version.
+
+Module filters:
+  *                     Match all modules.
+  1.*                   Match all modules in section 1.
+  1.1.*                 Match all modules in section 1.1.
+  1.1.1                 Match a specific module.
 
 Examples:
   rlch
   rlch help
   rlch --version
+  rlch modules
+  rlch modules '1.1.*'
 EOF
 }
 
@@ -167,6 +177,9 @@ _bootstrap_normalize_command() {
         version | -V | --version)
             printf '%s\n' "version"
             ;;
+        modules | list-modules)
+            printf '%s\n' "modules"
+            ;;
         *)
             return 1
             ;;
@@ -201,6 +214,7 @@ initialize_framework() {
 #
 # Arguments:
 #   $1 Command name.
+#   Remaining arguments are passed to the command.
 #
 # Returns:
 #   0 on success.
@@ -209,12 +223,34 @@ initialize_framework() {
 execute_command() {
     local command_name="${1:-}"
 
+    shift || true
+
     case "${command_name}" in
         help)
+            if (($# > 0)); then
+                die_invalid_argument \
+                    "The help command does not accept arguments."
+            fi
+
             show_help
             ;;
         version)
+            if (($# > 0)); then
+                die_invalid_argument \
+                    "The version command does not accept arguments."
+            fi
+
             show_version
+            ;;
+        modules)
+            if (($# > 1)); then
+                die_invalid_argument \
+                    "The modules command accepts at most one filter."
+            fi
+
+            if ! list_modules "${1:-${RLCH_MODULE_DEFAULT_FILTER}}"; then
+                die_execution "Unable to discover framework modules."
+            fi
             ;;
         *)
             die_invalid_argument \
@@ -243,13 +279,10 @@ main() {
 
     initialize_framework
 
-    if (($# > 1)); then
-        die_invalid_argument \
-            "Unexpected argument: ${2}. Use --help for usage."
-    fi
-
     if [[ -z "${requested_command}" ]]; then
         requested_command="${RLCH_DEFAULT_COMMAND}"
+    else
+        shift
     fi
 
     if ! normalized_command="$(
@@ -259,5 +292,5 @@ main() {
             "Unsupported command: ${requested_command}. Use --help for usage."
     fi
 
-    execute_command "${normalized_command}"
+    execute_command "${normalized_command}" "$@"
 }
