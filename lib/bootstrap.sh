@@ -89,6 +89,7 @@ _bootstrap_load_core_libraries() {
         "configuration.sh"
         "logging.sh"
         "modules.sh"
+        "module_api.sh"
     )
 
     for library_name in "${libraries[@]}"; do
