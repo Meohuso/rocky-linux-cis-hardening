@@ -70,19 +70,6 @@ clear_module_functions() {
 ##
 # Reset the currently loaded module context.
 #
-# Globals modified:
-#   RLCH_CURRENT_MODULE_DIRECTORY
-#   RLCH_CURRENT_MODULE_ID
-#   RLCH_CURRENT_MODULE_TITLE
-#   RLCH_CURRENT_MODULE_DESCRIPTION
-#   RLCH_CURRENT_MODULE_RATIONALE
-#   RLCH_CURRENT_MODULE_LEVEL
-#   RLCH_CURRENT_MODULE_ENABLED
-#   RLCH_CURRENT_MODULE_REQUIRES_REBOOT
-#   RLCH_CURRENT_MODULE_OPENSCAP_RULE
-#   RLCH_CURRENT_MODULE_METADATA_FILE
-#   RLCH_CURRENT_MODULE_IMPLEMENTATION_FILE
-#
 # Returns:
 #   0 on success.
 ##
@@ -118,11 +105,7 @@ is_valid_module_result() {
     local result_code="${1:-}"
 
     case "${result_code}" in
-        "${RLCH_MODULE_RESULT_SUCCESS}" |
-            "${RLCH_MODULE_RESULT_NON_COMPLIANT}" |
-            "${RLCH_MODULE_RESULT_ERROR}" |
-            "${RLCH_MODULE_RESULT_NOT_APPLICABLE}" |
-            "${RLCH_MODULE_RESULT_CHANGED}")
+        "${RLCH_MODULE_RESULT_SUCCESS}"|"${RLCH_MODULE_RESULT_NON_COMPLIANT}"|"${RLCH_MODULE_RESULT_ERROR}"|"${RLCH_MODULE_RESULT_NOT_APPLICABLE}"|"${RLCH_MODULE_RESULT_CHANGED}")
             return 0
             ;;
         *)
@@ -199,7 +182,7 @@ is_valid_module_level() {
     local module_level="${1:-}"
 
     case "${module_level}" in
-        "1" | "2")
+        "1"|"2")
             return 0
             ;;
         *)
@@ -213,16 +196,6 @@ is_valid_module_level() {
 #
 # Arguments:
 #   $1 Expected module identifier derived from its directory.
-#
-# Globals:
-#   RLCH_MODULE_ID
-#   RLCH_MODULE_TITLE
-#   RLCH_MODULE_DESCRIPTION
-#   RLCH_MODULE_RATIONALE
-#   RLCH_MODULE_LEVEL
-#   RLCH_MODULE_ENABLED
-#   RLCH_MODULE_REQUIRES_REBOOT
-#   RLCH_MODULE_OPENSCAP_RULE
 #
 # Returns:
 #   0 when the metadata is valid.
@@ -242,56 +215,47 @@ validate_loaded_module_metadata() {
     fi
 
     if ! is_valid_module_identifier "${RLCH_MODULE_ID}"; then
-        error_message \
-            "Invalid module identifier: ${RLCH_MODULE_ID}"
+        error_message "Invalid module identifier: ${RLCH_MODULE_ID}"
         return 1
     fi
 
     if [[ "${RLCH_MODULE_ID}" != "${expected_identifier}" ]]; then
-        error_message \
-            "Module identifier ${RLCH_MODULE_ID} does not match its directory identifier ${expected_identifier}."
+        error_message "Module identifier ${RLCH_MODULE_ID} does not match its directory identifier ${expected_identifier}."
         return 1
     fi
 
     if [[ -z "${RLCH_MODULE_TITLE:-}" ]]; then
-        error_message \
-            "RLCH_MODULE_TITLE must not be empty for module ${RLCH_MODULE_ID}."
+        error_message "RLCH_MODULE_TITLE must not be empty for module ${RLCH_MODULE_ID}."
         return 1
     fi
 
     if [[ -z "${RLCH_MODULE_DESCRIPTION:-}" ]]; then
-        error_message \
-            "RLCH_MODULE_DESCRIPTION must not be empty for module ${RLCH_MODULE_ID}."
+        error_message "RLCH_MODULE_DESCRIPTION must not be empty for module ${RLCH_MODULE_ID}."
         return 1
     fi
 
     if [[ -z "${RLCH_MODULE_RATIONALE:-}" ]]; then
-        error_message \
-            "RLCH_MODULE_RATIONALE must not be empty for module ${RLCH_MODULE_ID}."
+        error_message "RLCH_MODULE_RATIONALE must not be empty for module ${RLCH_MODULE_ID}."
         return 1
     fi
 
     if ! is_valid_module_level "${RLCH_MODULE_LEVEL:-}"; then
-        error_message \
-            "RLCH_MODULE_LEVEL must be 1 or 2 for module ${RLCH_MODULE_ID}."
+        error_message "RLCH_MODULE_LEVEL must be 1 or 2 for module ${RLCH_MODULE_ID}."
         return 1
     fi
 
     if ! is_boolean "${RLCH_MODULE_ENABLED:-}"; then
-        error_message \
-            "RLCH_MODULE_ENABLED must be a boolean value for module ${RLCH_MODULE_ID}."
+        error_message "RLCH_MODULE_ENABLED must be a boolean value for module ${RLCH_MODULE_ID}."
         return 1
     fi
 
     if ! is_boolean "${RLCH_MODULE_REQUIRES_REBOOT:-}"; then
-        error_message \
-            "RLCH_MODULE_REQUIRES_REBOOT must be a boolean value for module ${RLCH_MODULE_ID}."
+        error_message "RLCH_MODULE_REQUIRES_REBOOT must be a boolean value for module ${RLCH_MODULE_ID}."
         return 1
     fi
 
     if [[ -z "${RLCH_MODULE_OPENSCAP_RULE:-}" ]]; then
-        error_message \
-            "RLCH_MODULE_OPENSCAP_RULE must not be empty for module ${RLCH_MODULE_ID}."
+        error_message "RLCH_MODULE_OPENSCAP_RULE must not be empty for module ${RLCH_MODULE_ID}."
         return 1
     fi
 
@@ -300,10 +264,6 @@ validate_loaded_module_metadata() {
 
 ##
 # Validate the implementation functions loaded for a module.
-#
-# Globals:
-#   RLCH_MODULE_REQUIRED_FUNCTIONS
-#   RLCH_MODULE_ID
 #
 # Returns:
 #   0 when all required functions are available.
@@ -314,8 +274,7 @@ validate_loaded_module_functions() {
 
     for function_name in "${RLCH_MODULE_REQUIRED_FUNCTIONS[@]}"; do
         if ! declare -F "${function_name}" >/dev/null 2>&1; then
-            error_message \
-                "Module ${RLCH_MODULE_ID:-unknown} does not implement required function: ${function_name}"
+            error_message "Module ${RLCH_MODULE_ID:-unknown} does not implement required function: ${function_name}"
             return 1
         fi
     done
@@ -345,26 +304,6 @@ clear_module_metadata_variables() {
 ##
 # Copy temporary metadata variables into the current module context.
 #
-# Globals read:
-#   RLCH_MODULE_ID
-#   RLCH_MODULE_TITLE
-#   RLCH_MODULE_DESCRIPTION
-#   RLCH_MODULE_RATIONALE
-#   RLCH_MODULE_LEVEL
-#   RLCH_MODULE_ENABLED
-#   RLCH_MODULE_REQUIRES_REBOOT
-#   RLCH_MODULE_OPENSCAP_RULE
-#
-# Globals modified:
-#   RLCH_CURRENT_MODULE_ID
-#   RLCH_CURRENT_MODULE_TITLE
-#   RLCH_CURRENT_MODULE_DESCRIPTION
-#   RLCH_CURRENT_MODULE_RATIONALE
-#   RLCH_CURRENT_MODULE_LEVEL
-#   RLCH_CURRENT_MODULE_ENABLED
-#   RLCH_CURRENT_MODULE_REQUIRES_REBOOT
-#   RLCH_CURRENT_MODULE_OPENSCAP_RULE
-#
 # Returns:
 #   0 on success.
 ##
@@ -375,9 +314,7 @@ store_loaded_module_metadata() {
     RLCH_CURRENT_MODULE_RATIONALE="${RLCH_MODULE_RATIONALE}"
     RLCH_CURRENT_MODULE_LEVEL="${RLCH_MODULE_LEVEL}"
     RLCH_CURRENT_MODULE_ENABLED="${RLCH_MODULE_ENABLED}"
-    RLCH_CURRENT_MODULE_REQUIRES_REBOOT="${
-        RLCH_MODULE_REQUIRES_REBOOT
-    }"
+    RLCH_CURRENT_MODULE_REQUIRES_REBOOT="${RLCH_MODULE_REQUIRES_REBOOT}"
     RLCH_CURRENT_MODULE_OPENSCAP_RULE="${RLCH_MODULE_OPENSCAP_RULE}"
 
     return 0
@@ -388,9 +325,6 @@ store_loaded_module_metadata() {
 #
 # Arguments:
 #   $1 Module directory.
-#
-# Globals modified:
-#   RLCH_CURRENT_MODULE_*
 #
 # Returns:
 #   0 when the module is loaded and valid.
@@ -411,31 +345,21 @@ load_module() {
     fi
 
     if ! is_valid_module_directory "${module_directory}"; then
-        error_message \
-            "Invalid or incomplete module directory: ${module_directory}"
+        error_message "Invalid or incomplete module directory: ${module_directory}"
         return 1
     fi
 
-    if ! module_identifier="$(
-        module_identifier_from_path "${module_directory}"
-    )"; then
-        error_message \
-            "Unable to determine module identifier: ${module_directory}"
+    if ! module_identifier="$(module_identifier_from_path "${module_directory}")"; then
+        error_message "Unable to determine module identifier: ${module_directory}"
         return 1
     fi
 
-    metadata_file="${
-        module_directory
-    }/${RLCH_MODULE_METADATA_FILENAME}"
-
-    implementation_file="${
-        module_directory
-    }/${RLCH_MODULE_IMPLEMENTATION_FILENAME}"
+    metadata_file="${module_directory}/${RLCH_MODULE_METADATA_FILENAME}"
+    implementation_file="${module_directory}/${RLCH_MODULE_IMPLEMENTATION_FILENAME}"
 
     # shellcheck source=/dev/null
     if ! source "${metadata_file}"; then
-        error_message \
-            "Unable to load module metadata: ${metadata_file}"
+        error_message "Unable to load module metadata: ${metadata_file}"
         clear_module_metadata_variables
         return 1
     fi
@@ -447,8 +371,7 @@ load_module() {
 
     # shellcheck source=/dev/null
     if ! source "${implementation_file}"; then
-        error_message \
-            "Unable to load module implementation: ${implementation_file}"
+        error_message "Unable to load module implementation: ${implementation_file}"
         clear_module_functions
         clear_module_metadata_variables
         return 1
@@ -467,8 +390,7 @@ load_module() {
     store_loaded_module_metadata
     clear_module_metadata_variables
 
-    log_debug \
-        "Loaded module ${RLCH_CURRENT_MODULE_ID}: ${RLCH_CURRENT_MODULE_TITLE}"
+    log_debug "Loaded module ${RLCH_CURRENT_MODULE_ID}: ${RLCH_CURRENT_MODULE_TITLE}"
 
     return 0
 }
