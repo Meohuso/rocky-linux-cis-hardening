@@ -56,9 +56,7 @@ create_execution_test_module() {
     local rollback_result="${6:-${RLCH_MODULE_RESULT_CHANGED}}"
     local module_directory
 
-    module_directory="${
-        RLCH_MODULE_ROOT
-    }/${RLCH_MODULE_NAMESPACE}/${module_identifier//./\/}"
+    module_directory="${RLCH_MODULE_ROOT}/${RLCH_MODULE_NAMESPACE}/${module_identifier//./\/}"
 
     mkdir -p "${module_directory}"
 
