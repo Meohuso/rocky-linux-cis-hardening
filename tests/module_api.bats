@@ -49,9 +49,7 @@ create_api_test_module() {
     local requires_reboot="${3:-false}"
     local module_directory
 
-    module_directory="${
-        RLCH_MODULE_ROOT
-    }/${RLCH_MODULE_NAMESPACE}/${module_identifier//./\/}"
+    module_directory="${RLCH_MODULE_ROOT}/${RLCH_MODULE_NAMESPACE}/${module_identifier//./\/}"
 
     mkdir -p "${module_directory}"
 
