@@ -122,13 +122,9 @@ is_valid_module_directory() {
         return 1
     fi
 
-    metadata_file="${
-        module_directory
-    }/${RLCH_MODULE_METADATA_FILENAME}"
+    metadata_file="${module_directory}/${RLCH_MODULE_METADATA_FILENAME}"
 
-    implementation_file="${
-        module_directory
-    }/${RLCH_MODULE_IMPLEMENTATION_FILENAME}"
+    implementation_file="${module_directory}/${RLCH_MODULE_IMPLEMENTATION_FILENAME}"
 
     readable_file_exists "${metadata_file}" &&
         readable_file_exists "${implementation_file}"
