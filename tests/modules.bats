@@ -65,9 +65,7 @@ teardown() {
 @test "module_identifier_from_path converts a module path to an identifier" {
     local module_directory
 
-    module_directory="${
-        RLCH_MODULE_ROOT
-    }/${RLCH_MODULE_NAMESPACE}/1/1/1"
+    module_directory="${RLCH_MODULE_ROOT}/${RLCH_MODULE_NAMESPACE}/1/1/1"
 
     run module_identifier_from_path "${module_directory}"
 
