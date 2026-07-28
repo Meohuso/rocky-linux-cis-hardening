@@ -1,26 +1,263 @@
 #!/usr/bin/env bash
+#
+# Rocky Linux CIS Hardening Framework
+#
+# SPDX-License-Identifier: MIT
+#
+
+# Prevent multiple sourcing.
+if [[ -n "${RLCH_BOOTSTRAP_LOADED:-}" ]]; then
+    return 0
+fi
+readonly RLCH_BOOTSTRAP_LOADED=1
+
+readonly RLCH_BOOTSTRAP_LIB_DIR="$(
+    cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+)"
+
+##
+# Print a bootstrap error before the framework logging subsystem is available.
+#
+# Arguments:
+#   $1 Error message.
+#
+# Returns:
+#   0 on success.
+##
+_bootstrap_print_error() {
+    local message="${1:-Unknown bootstrap error.}"
+
+    printf 'RLCH bootstrap error: %s\n' "${message}" >&2
+}
+
+##
+# Load a framework library.
+#
+# Arguments:
+#   $1 Library filename.
+#
+# Returns:
+#   0 on success.
+#   1 when the library cannot be loaded.
+##
+_bootstrap_load_library() {
+    local library_name="${1:-}"
+    local library_path
+
+    if [[ -z "${library_name}" ]]; then
+        _bootstrap_print_error "A library filename is required."
+        return 1
+    fi
+
+    library_path="${RLCH_BOOTSTRAP_LIB_DIR}/${library_name}"
+
+    if [[ ! -f "${library_path}" ]]; then
+        _bootstrap_print_error \
+            "Framework library does not exist: ${library_path}"
+        return 1
+    fi
+
+    if [[ ! -r "${library_path}" ]]; then
+        _bootstrap_print_error \
+            "Framework library is not readable: ${library_path}"
+        return 1
+    fi
+
+    # shellcheck source=/dev/null
+    if ! source "${library_path}"; then
+        _bootstrap_print_error \
+            "Unable to load framework library: ${library_path}"
+        return 1
+    fi
+
+    return 0
+}
+
+##
+# Load the core framework libraries in dependency order.
+#
+# Returns:
+#   0 on success.
+#   1 when a library cannot be loaded.
+##
+_bootstrap_load_core_libraries() {
+    local library_name
+    local -a libraries=(
+        "constants.sh"
+        "common.sh"
+        "error.sh"
+        "configuration.sh"
+        "logging.sh"
+    )
+
+    for library_name in "${libraries[@]}"; do
+        if ! _bootstrap_load_library "${library_name}"; then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+##
+# Print the command-line help.
+#
+# Outputs:
+#   Framework usage information.
+#
+# Returns:
+#   0 on success.
+##
+show_help() {
+    cat <<EOF
+${RLCH_PROJECT_NAME}
+
+Usage:
+  rlch [COMMAND]
+  rlch [OPTION]
+
+Commands:
+  help              Display this help message.
+  version           Display the framework version.
+
+Options:
+  -h, --help        Display this help message.
+  -V, --version     Display the framework version.
+
+Examples:
+  rlch
+  rlch help
+  rlch --version
+EOF
+}
+
+##
+# Print the framework version.
+#
+# Outputs:
+#   Framework name and version.
+#
+# Returns:
+#   0 on success.
+##
+show_version() {
+    printf '%s %s\n' "${RLCH_PROJECT_NAME}" "${RLCH_VERSION}"
+}
+
+##
+# Normalize a command-line command or option.
+#
+# Arguments:
+#   $1 Command or option.
+#
+# Outputs:
+#   Canonical command name.
+#
+# Returns:
+#   0 when the command is recognized.
+#   1 otherwise.
+##
+_bootstrap_normalize_command() {
+    local command_name="${1:-}"
+
+    case "${command_name}" in
+        help | -h | --help)
+            printf '%s\n' "help"
+            ;;
+        version | -V | --version)
+            printf '%s\n' "version"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+##
+# Initialize the framework core.
+#
+# Returns:
+#   0 on success.
+#   Terminates execution when initialization fails.
+##
+initialize_framework() {
+    if ! load_constants; then
+        die_environment "Unable to initialize framework constants."
+    fi
+
+    if ! load_configuration; then
+        die_configuration "Unable to load framework configuration."
+    fi
+
+    if ! initialize_logging; then
+        die_configuration "Unable to initialize framework logging."
+    fi
+
+    log_debug "Framework core initialized."
+}
+
+##
+# Execute a framework command.
+#
+# Arguments:
+#   $1 Command name.
+#
+# Returns:
+#   0 on success.
+#   Terminates execution when the command is invalid.
+##
+execute_command() {
+    local command_name="${1:-}"
+
+    case "${command_name}" in
+        help)
+            show_help
+            ;;
+        version)
+            show_version
+            ;;
+        *)
+            die_invalid_argument \
+                "Unsupported command: ${command_name}. Use --help for usage."
+            ;;
+    esac
+}
 
 ##
 # Main framework entry point.
 #
 # Arguments:
-#   All command line arguments.
+#   All command-line arguments.
 #
 # Returns:
-#   Exit status.
+#   0 on success.
+#   A framework-specific exit status on failure.
 ##
 main() {
+    local requested_command="${1:-}"
+    local normalized_command
 
-    load_constants
+    if ! _bootstrap_load_core_libraries; then
+        return 1
+    fi
 
-    load_configuration
+    initialize_framework
 
-    initialize_logging
+    if (($# > 1)); then
+        die_invalid_argument \
+            "Unexpected argument: ${2}. Use --help for usage."
+    fi
 
-    detect_environment
+    if [[ -z "${requested_command}" ]]; then
+        requested_command="${RLCH_DEFAULT_COMMAND}"
+    fi
 
-    initialize_runtime
+    if ! normalized_command="$(
+        _bootstrap_normalize_command "${requested_command}"
+    )"; then
+        die_invalid_argument \
+            "Unsupported command: ${requested_command}. Use --help for usage."
+    fi
 
-    start_execution "$@"
-
+    execute_command "${normalized_command}"
 }
