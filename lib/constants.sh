@@ -5,10 +5,15 @@
 # SPDX-License-Identifier: MIT
 #
 
+# Constants declared by this library form part of the framework API and are
+# consumed by other files after this library is sourced.
+# shellcheck disable=SC2034
+
 # Prevent multiple sourcing.
 if [[ -n "${RLCH_CONSTANTS_LOADED:-}" ]]; then
     return 0
 fi
+
 readonly RLCH_CONSTANTS_LOADED=1
 
 ##
@@ -46,7 +51,6 @@ load_constants() {
     fi
 
     readonly RLCH_ROOT_DIR
-
     readonly RLCH_LIB_DIR="${RLCH_ROOT_DIR}/lib"
     readonly RLCH_CONFIG_DIR="${RLCH_ROOT_DIR}/config"
     readonly RLCH_MODULE_DIR="${RLCH_ROOT_DIR}/modules"
@@ -71,6 +75,5 @@ load_constants() {
     fi
 
     readonly RLCH_VERSION
-
     readonly RLCH_CONSTANTS_INITIALIZED=1
 }
