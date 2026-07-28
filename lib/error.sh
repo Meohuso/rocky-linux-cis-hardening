@@ -9,9 +9,14 @@
 if [[ -n "${RLCH_ERROR_LOADED:-}" ]]; then
     return 0
 fi
+
 readonly RLCH_ERROR_LOADED=1
 
+# Public success exit code consumed by framework entry points after sourcing
+# this library.
+# shellcheck disable=SC2034
 readonly RLCH_EXIT_SUCCESS=0
+
 readonly RLCH_EXIT_GENERAL_ERROR=1
 readonly RLCH_EXIT_INVALID_ARGUMENT=2
 readonly RLCH_EXIT_PERMISSION_ERROR=3
