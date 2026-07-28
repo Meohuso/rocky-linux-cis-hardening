@@ -212,6 +212,9 @@ execute_current_module_action() {
 
     if module_action_requires_enabled_module "${action}" &&
         ! current_module_is_enabled; then
+
+        echo "DEBUG: disabled branch reached"
+        
         log_info \
             "Skipping ${action} for disabled module ${RLCH_CURRENT_MODULE_ID}."
 
