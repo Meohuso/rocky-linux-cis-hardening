@@ -1,0 +1,71 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+
+      - name: Run ShellCheck
+        shell: bash
+        run: |
+          mapfile -d '' shell_files < <(
+            find lib config scripts \
+              -type f \
+              \( \
+                -name '*.sh' \
+                -o -name '*.bash' \
+                -o -name '*.conf' \
+              \) \
+              -print0
+          )
+
+          shell_files+=(
+            "./rlch"
+            "./install.sh"
+          )
+
+          shellcheck \
+            --external-sources \
+            --shell=bash \
+            "${shell_files[@]}"
+
+  tests:
+    name: Bats tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bats
+
+      - name: Run Bats tests
+        run: bats tests
