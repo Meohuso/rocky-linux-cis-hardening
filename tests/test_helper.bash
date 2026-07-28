@@ -16,16 +16,19 @@ create_test_module() {
     local module_identifier="${2:?Module identifier is required.}"
     local module_directory
 
-    module_directory="${
-        module_root
-    }/${module_identifier//./\/}"
+    module_directory="${module_root}/${module_identifier//./\/}"
 
     mkdir -p "${module_directory}"
 
     cat >"${module_directory}/metadata.conf" <<EOF
 RLCH_MODULE_ID="${module_identifier}"
 RLCH_MODULE_TITLE="Test module ${module_identifier}"
+RLCH_MODULE_DESCRIPTION="Description"
+RLCH_MODULE_RATIONALE="Rationale"
+RLCH_MODULE_LEVEL="1"
 RLCH_MODULE_ENABLED="true"
+RLCH_MODULE_REQUIRES_REBOOT="false"
+RLCH_MODULE_OPENSCAP_RULE="xccdf_org.ssgproject.content_rule_test"
 EOF
 
     cat >"${module_directory}/module.sh" <<'EOF'
@@ -58,9 +61,7 @@ create_incomplete_test_module() {
     local module_identifier="${2:?Module identifier is required.}"
     local module_directory
 
-    module_directory="${
-        module_root
-    }/${module_identifier//./\/}"
+    module_directory="${module_root}/${module_identifier//./\/}"
 
     mkdir -p "${module_directory}"
     touch "${module_directory}/metadata.conf"
