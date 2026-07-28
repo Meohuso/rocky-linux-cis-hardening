@@ -310,11 +310,21 @@ clear_module_metadata_variables() {
 store_loaded_module_metadata() {
     RLCH_CURRENT_MODULE_ID="${RLCH_MODULE_ID}"
     RLCH_CURRENT_MODULE_TITLE="${RLCH_MODULE_TITLE}"
+
+    # Public module context consumed by other sourced framework libraries.
+    # shellcheck disable=SC2034
     RLCH_CURRENT_MODULE_DESCRIPTION="${RLCH_MODULE_DESCRIPTION}"
+
+    # shellcheck disable=SC2034
     RLCH_CURRENT_MODULE_RATIONALE="${RLCH_MODULE_RATIONALE}"
+
+    # shellcheck disable=SC2034
     RLCH_CURRENT_MODULE_LEVEL="${RLCH_MODULE_LEVEL}"
+
     RLCH_CURRENT_MODULE_ENABLED="${RLCH_MODULE_ENABLED}"
     RLCH_CURRENT_MODULE_REQUIRES_REBOOT="${RLCH_MODULE_REQUIRES_REBOOT}"
+
+    # shellcheck disable=SC2034
     RLCH_CURRENT_MODULE_OPENSCAP_RULE="${RLCH_MODULE_OPENSCAP_RULE}"
 
     return 0
@@ -383,8 +393,14 @@ load_module() {
         return 1
     fi
 
+    # Public module path context consumed by other sourced framework libraries.
+    # shellcheck disable=SC2034
     RLCH_CURRENT_MODULE_DIRECTORY="${module_directory}"
+
+    # shellcheck disable=SC2034
     RLCH_CURRENT_MODULE_METADATA_FILE="${metadata_file}"
+
+    # shellcheck disable=SC2034
     RLCH_CURRENT_MODULE_IMPLEMENTATION_FILE="${implementation_file}"
 
     store_loaded_module_metadata
