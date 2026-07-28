@@ -2,56 +2,65 @@
 #
 # Rocky Linux CIS Hardening Framework
 #
-# Global constants
+# SPDX-License-Identifier: MIT
 #
 
-#------------------------------------------------------------------------------
-# Project information
-#------------------------------------------------------------------------------
+# Prevent multiple sourcing.
+if [[ -n "${RLCH_CONSTANTS_LOADED:-}" ]]; then
+    return 0
+fi
+readonly RLCH_CONSTANTS_LOADED=1
 
-readonly PROJECT_NAME="rocky-linux-cis-hardening"
-readonly PROJECT_VERSION="$(< VERSION)"
+##
+# Load framework constants.
+#
+# Globals initialized:
+#   RLCH_PROJECT_NAME
+#   RLCH_ROOT_DIR
+#   RLCH_LIB_DIR
+#   RLCH_CONFIG_DIR
+#   RLCH_AUDIT_DIR
+#   RLCH_REPORT_DIR
+#   RLCH_RUNTIME_DIR
+#   RLCH_STATE_DIR
+#   RLCH_TEMPLATE_DIR
+#   RLCH_TEST_DIR
+#   RLCH_LOG_DIR
+#   RLCH_VERSION_FILE
+#   RLCH_VERSION
+#
+# Returns:
+#   0 on success.
+##
+load_constants() {
 
-#------------------------------------------------------------------------------
-# Directories
-#------------------------------------------------------------------------------
+    if [[ -n "${RLCH_CONSTANTS_INITIALIZED:-}" ]]; then
+        return 0
+    fi
 
-readonly PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    readonly RLCH_PROJECT_NAME="Rocky Linux CIS Hardening Framework"
 
-readonly LIB_DIR="${PROJECT_ROOT}/lib"
-readonly SCRIPT_DIR="${PROJECT_ROOT}/scripts"
-readonly TEMPLATE_DIR="${PROJECT_ROOT}/templates"
-readonly STATE_DIR="${PROJECT_ROOT}/state"
-readonly REPORT_DIR="${PROJECT_ROOT}/reports"
-readonly LOG_DIR="${PROJECT_ROOT}/logs"
-readonly AUDIT_DIR="${PROJECT_ROOT}/audit"
-readonly TEST_DIR="${PROJECT_ROOT}/tests"
+    readonly RLCH_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-#------------------------------------------------------------------------------
-# Runtime
-#------------------------------------------------------------------------------
+    readonly RLCH_LIB_DIR="${RLCH_ROOT_DIR}/lib"
+    readonly RLCH_CONFIG_DIR="${RLCH_ROOT_DIR}/config"
+    readonly RLCH_AUDIT_DIR="${RLCH_ROOT_DIR}/audit"
+    readonly RLCH_REPORT_DIR="${RLCH_ROOT_DIR}/reports"
+    readonly RLCH_RUNTIME_DIR="${RLCH_ROOT_DIR}/runtime"
+    readonly RLCH_STATE_DIR="${RLCH_ROOT_DIR}/state"
+    readonly RLCH_TEMPLATE_DIR="${RLCH_ROOT_DIR}/templates"
+    readonly RLCH_TEST_DIR="${RLCH_ROOT_DIR}/tests"
+    readonly RLCH_LOG_DIR="${RLCH_ROOT_DIR}/logs"
 
-readonly LOG_FILE="${LOG_DIR}/framework.log"
+    readonly RLCH_VERSION_FILE="${RLCH_ROOT_DIR}/VERSION"
 
-readonly REPORT_HTML="${REPORT_DIR}/report.html"
-readonly REPORT_XML="${REPORT_DIR}/report.xml"
+    if [[ -r "${RLCH_VERSION_FILE}" ]]; then
+        readonly RLCH_VERSION="$(
+            head -n 1 "${RLCH_VERSION_FILE}" | tr -d '[:space:]'
+        )"
+    else
+        readonly RLCH_VERSION="0.0.0-dev"
+    fi
 
-#------------------------------------------------------------------------------
-# Exit codes
-#------------------------------------------------------------------------------
-
-readonly EXIT_SUCCESS=0
-readonly EXIT_ERROR=1
-readonly EXIT_CONFIGURATION_ERROR=2
-readonly EXIT_PREREQUISITE_ERROR=3
-readonly EXIT_VALIDATION_ERROR=4
-
-#------------------------------------------------------------------------------
-# Colors
-#------------------------------------------------------------------------------
-
-readonly COLOR_RED="\033[31m"
-readonly COLOR_GREEN="\033[32m"
-readonly COLOR_YELLOW="\033[33m"
-readonly COLOR_BLUE="\033[34m"
-readonly COLOR_RESET="\033[0m"
+    readonly RLCH_CONSTANTS_INITIALIZED=1
+}
