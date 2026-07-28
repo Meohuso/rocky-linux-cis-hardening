@@ -58,10 +58,10 @@ is_valid_module_action() {
     local action="${1:-}"
 
     case "${action}" in
-        "${RLCH_MODULE_ACTION_CHECK}" |
-            "${RLCH_MODULE_ACTION_APPLY}" |
-            "${RLCH_MODULE_ACTION_VALIDATE}" |
-            "${RLCH_MODULE_ACTION_ROLLBACK}")
+        "${RLCH_MODULE_ACTION_CHECK}" | \
+        "${RLCH_MODULE_ACTION_APPLY}" | \
+        "${RLCH_MODULE_ACTION_VALIDATE}" | \
+        "${RLCH_MODULE_ACTION_ROLLBACK}")
             return 0
             ;;
         *)
@@ -84,8 +84,8 @@ module_action_requires_enabled_module() {
     local action="${1:-}"
 
     case "${action}" in
-        "${RLCH_MODULE_ACTION_APPLY}" |
-            "${RLCH_MODULE_ACTION_ROLLBACK}")
+        "${RLCH_MODULE_ACTION_APPLY}" | \
+        "${RLCH_MODULE_ACTION_ROLLBACK}")
             return 0
             ;;
         *)
