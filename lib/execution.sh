@@ -160,9 +160,15 @@ store_execution_result() {
         return 1
     fi
 
+    # These values form the public execution context consumed by callers
+    # after this library has been sourced.
+    # shellcheck disable=SC2034
     RLCH_EXECUTION_MODULE_ID="${module_identifier}"
+    # shellcheck disable=SC2034
     RLCH_EXECUTION_ACTION="${action}"
+    # shellcheck disable=SC2034
     RLCH_EXECUTION_RESULT="${result_code}"
+
     RLCH_EXECUTION_STATUS="${execution_status}"
 
     return 0
