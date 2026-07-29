@@ -2,16 +2,16 @@
 #
 # Rocky Linux CIS Hardening Framework
 #
-# Kernel module hardening helpers.
+# Generic kernel module hardening helpers.
 #
 # SPDX-License-Identifier: MIT
 #
 
 # Prevent multiple sourcing.
-if [[ -n "${RLCH_KERNEL_MODULE_LOADED:-}" ]]; then
+if [[ -n "${RLCH_KERNEL_MODULE_LIBRARY_LOADED:-}" ]]; then
     return 0
 fi
-readonly RLCH_KERNEL_MODULE_LOADED=1
+readonly RLCH_KERNEL_MODULE_LIBRARY_LOADED=1
 
 RLCH_KERNEL_MODULE_PROC_MODULES="${RLCH_KERNEL_MODULE_PROC_MODULES:-/proc/modules}"
 
@@ -28,9 +28,7 @@ RLCH_KERNEL_MODULE_PROC_MODULES="${RLCH_KERNEL_MODULE_PROC_MODULES:-/proc/module
 kernel_module_exists() {
     local module_name="${1:-}"
 
-    if [[ -z "${module_name}" ]]; then
-        return 1
-    fi
+    [[ -n "${module_name}" ]] || return 1
 
     modprobe --showconfig 2>/dev/null |
         grep -Eq \
@@ -46,9 +44,6 @@ kernel_module_exists() {
 # Arguments:
 #   $1 Kernel module name.
 #
-# Globals:
-#   RLCH_KERNEL_MODULE_PROC_MODULES
-#
 # Returns:
 #   0 when the module is loaded.
 #   1 otherwise.
@@ -56,9 +51,7 @@ kernel_module_exists() {
 kernel_module_is_loaded() {
     local module_name="${1:-}"
 
-    if [[ -z "${module_name}" ]]; then
-        return 1
-    fi
+    [[ -n "${module_name}" ]] || return 1
 
     awk \
         -v module_name="${module_name}" \
@@ -67,7 +60,7 @@ kernel_module_is_loaded() {
 }
 
 ##
-# Determine whether an effective modprobe install directive disables a module.
+# Determine whether an effective install directive disables a kernel module.
 #
 # Arguments:
 #   $1 Kernel module name.
@@ -79,9 +72,7 @@ kernel_module_is_loaded() {
 kernel_module_has_install_directive() {
     local module_name="${1:-}"
 
-    if [[ -z "${module_name}" ]]; then
-        return 1
-    fi
+    [[ -n "${module_name}" ]] || return 1
 
     modprobe --showconfig 2>/dev/null |
         awk \
@@ -112,7 +103,7 @@ kernel_module_has_install_directive() {
 }
 
 ##
-# Determine whether an effective modprobe blacklist directive exists.
+# Determine whether an effective blacklist directive exists.
 #
 # Arguments:
 #   $1 Kernel module name.
@@ -124,9 +115,7 @@ kernel_module_has_install_directive() {
 kernel_module_has_blacklist_directive() {
     local module_name="${1:-}"
 
-    if [[ -z "${module_name}" ]]; then
-        return 1
-    fi
+    [[ -n "${module_name}" ]] || return 1
 
     modprobe --showconfig 2>/dev/null |
         awk \
@@ -149,7 +138,7 @@ kernel_module_has_blacklist_directive() {
 #   $2 Managed configuration file.
 #
 # Returns:
-#   0 when the file contains the expected configuration.
+#   0 when the expected directives exist.
 #   1 otherwise.
 ##
 kernel_module_managed_file_is_compliant() {
@@ -158,9 +147,7 @@ kernel_module_managed_file_is_compliant() {
     local install_directive
     local blacklist_directive
 
-    if [[ -z "${module_name}" || -z "${configuration_file}" ]]; then
-        return 1
-    fi
+    [[ -n "${module_name}" && -n "${configuration_file}" ]] || return 1
 
     install_directive="install ${module_name} /bin/false"
     blacklist_directive="blacklist ${module_name}"
@@ -213,12 +200,12 @@ kernel_module_write_configuration() {
         return 1
     fi
 
-    if ! cat >"${temporary_file}" <<EOF
+    if ! cat >"${temporary_file}" <<EOF_CONFIGURATION
 # Managed by Rocky Linux CIS Hardening Framework.
 # CIS ${control_identifier} - Ensure ${module_name} kernel module is not available.
 install ${module_name} /bin/false
 blacklist ${module_name}
-EOF
+EOF_CONFIGURATION
     then
         rm -f "${temporary_file}"
         error_message \
@@ -256,17 +243,14 @@ EOF
 kernel_module_unload() {
     local module_name="${1:-}"
 
-    if [[ -z "${module_name}" ]]; then
-        return 1
-    fi
+    [[ -n "${module_name}" ]] || return 1
 
     if ! kernel_module_is_loaded "${module_name}"; then
         return 0
     fi
 
     if ! modprobe -r "${module_name}"; then
-        error_message \
-            "Unable to unload kernel module: ${module_name}"
+        error_message "Unable to unload kernel module: ${module_name}"
         return 1
     fi
 
@@ -274,8 +258,7 @@ kernel_module_unload() {
 }
 
 ##
-# Check whether a kernel module is unavailable, unloaded, disabled and
-# blacklisted.
+# Check whether a kernel module is unavailable or correctly disabled.
 #
 # Arguments:
 #   $1 Kernel module name.

@@ -20,6 +20,9 @@ setup() {
     # shellcheck source=lib/module_api.sh
     source "${RLCH_TEST_REPOSITORY_ROOT}/lib/module_api.sh"
 
+    # shellcheck source=lib/kernel_module.sh
+    source "${RLCH_TEST_REPOSITORY_ROOT}/lib/kernel_module.sh"
+
     RLCH_TEST_TEMPORARY_DIRECTORY="$(
         mktemp -d "${BATS_TEST_TMPDIR}/rlch-cis-1.1.1.1.XXXXXX"
     )"
@@ -51,15 +54,10 @@ setup() {
     RLCH_CIS_1_1_1_1_MODPROBE_DIRECTORY="${RLCH_TEST_TEMPORARY_DIRECTORY}/modprobe.d"
     RLCH_CIS_1_1_1_1_CONFIGURATION_FILE="${RLCH_CIS_1_1_1_1_MODPROBE_DIRECTORY}/rlch-cis-1.1.1.1-cramfs.conf"
     RLCH_CIS_1_1_1_1_EFFECTIVE_UID="0"
+    RLCH_KERNEL_MODULE_PROC_MODULES="${RLCH_TEST_PROC_MODULES}"
 
     # shellcheck source=modules/cis/1/1/1/1/module.sh
     source "${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/1/1/1/1/module.sh"
-
-    _cis_1_1_1_1_module_is_loaded() {
-        awk \
-            '$1 == "cramfs" { found = 1 } END { exit !found }' \
-            "${RLCH_TEST_PROC_MODULES}"
-    }
 }
 
 teardown() {
