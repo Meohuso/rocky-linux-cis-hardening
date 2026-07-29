@@ -73,6 +73,10 @@ log_debug() {
     return 0
 }
 
+log_info() {
+    printf '%s\n' "${1:-}"
+}
+
 log_warn() {
     return 0
 }
