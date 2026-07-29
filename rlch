@@ -8,7 +8,13 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if ! SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; then
+    printf '%s\n' \
+        "RLCH error: Unable to determine the script directory." >&2
+    exit 1
+fi
+
+readonly SCRIPT_DIR
 
 # shellcheck source=lib/bootstrap.sh
 source "${SCRIPT_DIR}/lib/bootstrap.sh"
