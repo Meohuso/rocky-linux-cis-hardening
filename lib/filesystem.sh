@@ -351,7 +351,7 @@ filesystem_copy() {
     if is_true "${overwrite}"; then
         copy_options+=(-f)
     else
-        copy_options+=(-n)
+        copy_options+=(--update=none)
     fi
 
     if ! cp "${copy_options[@]}" -- "${source_path}" "${destination_path}"; then
