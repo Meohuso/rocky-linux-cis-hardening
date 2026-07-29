@@ -33,8 +33,8 @@ setup() {
     RLCH_CIS_1_1_1_4_CONFIGURATION_FILE="${RLCH_TEST_KERNEL_CONFIGURATION_FILE}"
     RLCH_CIS_1_1_1_4_EFFECTIVE_UID="0"
 
-    # shellcheck source=modules/cis/1/1/1/3/module.sh
-    source "${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/1/1/1/3/module.sh"
+    # shellcheck source=modules/cis/1/1/1/4/module.sh
+    source "${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/1/1/1/4/module.sh"
 }
 
 teardown() {
@@ -168,11 +168,11 @@ teardown() {
 @test "metadata declares the expected CIS control" {
     local metadata_file
 
-    metadata_file="${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/1/1/1/3/metadata.conf"
+    metadata_file="${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/1/1/1/4/metadata.conf"
 
     clear_module_metadata_variables
 
-    # shellcheck source=modules/cis/1/1/1/3/metadata.conf
+    # shellcheck source=modules/cis/1/1/1/4/metadata.conf
     source "${metadata_file}"
     [ "${RLCH_MODULE_ID}" = "1.1.1.4" ]
     [ "${RLCH_MODULE_LEVEL}" = "1" ]
