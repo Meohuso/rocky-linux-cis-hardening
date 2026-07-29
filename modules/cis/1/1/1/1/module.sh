@@ -65,12 +65,10 @@ _cis_1_1_1_1_has_install_directive() {
                         command = command $field
                     }
 
-                    if (
-                        command == "/bin/false" ||
+                    if (command == "/bin/false" ||
                         command == "/usr/bin/false" ||
                         command == "/bin/true" ||
-                        command == "/usr/bin/true"
-                    ) {
+                        command == "/usr/bin/true") {
                         found = 1
                     }
                 }
