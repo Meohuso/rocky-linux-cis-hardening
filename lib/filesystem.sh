@@ -837,7 +837,8 @@ filesystem_backup() {
     fi
 
     if [[ -z "${backup_path}" ]]; then
-        backup_path="$(filesystem_backup_path "${source_path}")" || return 1
+        backup_path="$(filesystem_backup_path "${source_path}")" ||
+            return 1
     fi
 
     if filesystem_exists "${backup_path}" && ! is_true "${overwrite}"; then
@@ -848,7 +849,8 @@ filesystem_backup() {
     if ! filesystem_copy \
         "${source_path}" \
         "${backup_path}" \
-        "${overwrite}"; then
+        "${overwrite}" \
+        >/dev/null; then
         return 1
     fi
 
