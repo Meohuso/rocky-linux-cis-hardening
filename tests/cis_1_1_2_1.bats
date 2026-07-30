@@ -11,6 +11,9 @@ setup() {
     # shellcheck source=tests/test_helper.bash
     source "${BATS_TEST_DIRNAME}/test_helper.bash"
 
+    # shellcheck source=tests/helpers/mount_helper.bash
+    source "${BATS_TEST_DIRNAME}/helpers/mount_helper.bash"
+
     # shellcheck source=lib/common.sh
     source "${RLCH_TEST_REPOSITORY_ROOT}/lib/common.sh"
 
@@ -20,116 +23,131 @@ setup() {
     # shellcheck source=lib/module_api.sh
     source "${RLCH_TEST_REPOSITORY_ROOT}/lib/module_api.sh"
 
-    RLCH_CIS_1_1_2_1_FSTAB="${BATS_TEST_TMPDIR}/fstab"
+    setup_mount_test_environment
+
+    # shellcheck source=lib/mount.sh
+    source "${RLCH_TEST_REPOSITORY_ROOT}/lib/mount.sh"
+
+    RLCH_CIS_1_1_2_1_FSTAB="${RLCH_TEST_FSTAB}"
 
     # shellcheck source=modules/cis/1/1/2/1/module.sh
     source "${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/1/1/2/1/module.sh"
 }
 
-@test "check delegates partition validation for /tmp to the mount library" {
-    mount_check_partition() {
-        printf '%s|%s\n' "${1}" "${2}"
-        return "${RLCH_MODULE_RESULT_COMPLIANT}"
-    }
+teardown() {
+    teardown_mount_test_environment
+}
+
+@test "check succeeds when /tmp has persistent and runtime mount entries" {
+    add_mount_test_fstab_entry "/tmp"
+    add_mount_test_runtime_entry "/tmp"
 
     run check
 
-    [ "${status}" -eq "${RLCH_MODULE_RESULT_COMPLIANT}" ]
-    [ "${output}" = "/tmp|${RLCH_CIS_1_1_2_1_FSTAB}" ]
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
 }
 
-@test "check returns compliant when /tmp is a separate persistent and runtime mount" {
-    mount_check_partition() {
-        return "${RLCH_MODULE_RESULT_COMPLIANT}"
-    }
-
-    run check
-
-    [ "${status}" -eq "${RLCH_MODULE_RESULT_COMPLIANT}" ]
-}
-
-@test "check reports non-compliance when /tmp is not a separate mount" {
-    mount_check_partition() {
-        return "${RLCH_MODULE_RESULT_NON_COMPLIANT}"
-    }
+@test "check reports non-compliance when /tmp is absent from fstab" {
+    add_mount_test_runtime_entry "/tmp"
 
     run check
 
     [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
 }
 
-@test "check propagates a mount library error" {
-    mount_check_partition() {
-        return "${RLCH_MODULE_RESULT_ERROR}"
-    }
+@test "check reports non-compliance when /tmp is not mounted at runtime" {
+    add_mount_test_fstab_entry "/tmp"
 
     run check
 
-    [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
 }
 
-@test "apply delegates to the unsupported partition provisioning policy" {
-    mount_apply_partition() {
-        printf 'partition provisioning refused\n'
-        return "${RLCH_MODULE_RESULT_ERROR}"
-    }
+@test "check ignores a parent filesystem mounted on root" {
+    add_mount_test_fstab_entry "/"
+    add_mount_test_runtime_entry "/"
 
+    run check
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
+}
+
+@test "apply refuses automatic partition provisioning" {
     run apply
 
     [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
-    [ "${output}" = "partition provisioning refused" ]
+    [[ "${output}" == *"Automatic partition creation is intentionally unsupported"* ]]
 }
 
-@test "validate delegates to check" {
-    mount_check_partition() {
-        printf '%s|%s\n' "${1}" "${2}"
-        return "${RLCH_MODULE_RESULT_COMPLIANT}"
-    }
+@test "validate delegates to the compliance check" {
+    add_mount_test_fstab_entry "/tmp"
+    add_mount_test_runtime_entry "/tmp"
 
     run validate
 
-    [ "${status}" -eq "${RLCH_MODULE_RESULT_COMPLIANT}" ]
-    [ "${output}" = "/tmp|${RLCH_CIS_1_1_2_1_FSTAB}" ]
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
 }
 
-@test "validate reports non-compliance when check fails" {
-    mount_check_partition() {
-        return "${RLCH_MODULE_RESULT_NON_COMPLIANT}"
-    }
+@test "rollback restores the framework-managed fstab backup" {
+    local original_content
 
-    run validate
+    original_content=$'# original fstab\n/dev/mapper/root\t/\txfs\tdefaults\t0\t0\n'
 
-    [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
-}
-
-@test "rollback delegates restoration for /tmp to the mount library" {
-    mount_rollback() {
-        printf '%s|%s\n' "${1}" "${2}"
-        return "${RLCH_MODULE_RESULT_CHANGED}"
-    }
+    add_mount_test_fstab_entry "/tmp"
+    create_mount_test_fstab_backup "${original_content}"
 
     run rollback
 
     [ "${status}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
-    [ "${output}" = "/tmp|${RLCH_CIS_1_1_2_1_FSTAB}" ]
+    [ "$(cat "${RLCH_TEST_FSTAB}")" = "${original_content%$'\n'}" ]
+    [ ! -e "${RLCH_TEST_FSTAB}${RLCH_MOUNT_BACKUP_SUFFIX}" ]
 }
 
-@test "rollback is compliant when no framework-managed backup exists" {
-    mount_rollback() {
-        return "${RLCH_MODULE_RESULT_COMPLIANT}"
-    }
+@test "rollback remounts /tmp when it is mounted at runtime" {
+    local original_content
+
+    original_content=$'# original fstab\n/dev/mapper/tmp\t/tmp\txfs\tdefaults\t0\t0\n'
+
+    add_mount_test_fstab_entry "/tmp"
+    add_mount_test_runtime_entry "/tmp"
+    create_mount_test_fstab_backup "${original_content}"
 
     run rollback
 
-    [ "${status}" -eq "${RLCH_MODULE_RESULT_COMPLIANT}" ]
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
+    [ "$(cat "${RLCH_TEST_MOUNT_LOG}")" = "-o remount /tmp" ]
 }
 
-@test "rollback propagates a mount library error" {
-    mount_rollback() {
-        return "${RLCH_MODULE_RESULT_ERROR}"
-    }
+@test "rollback is idempotent when no backup exists" {
+    run rollback
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
+}
+
+@test "rollback fails without root privileges" {
+    create_mount_test_fstab_backup "# original fstab"$'\n'
+    set_mount_test_effective_uid "1000"
 
     run rollback
 
     [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+    [[ "${output}" == *"Root privileges are required"* ]]
+    [ -f "${RLCH_TEST_FSTAB}${RLCH_MOUNT_BACKUP_SUFFIX}" ]
+}
+
+@test "metadata declares the expected CIS control" {
+    local metadata_file
+
+    metadata_file="${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/1/1/2/1/metadata.conf"
+
+    clear_module_metadata_variables
+
+    # shellcheck source=modules/cis/1/1/2/1/metadata.conf
+    source "${metadata_file}"
+
+    [ "${RLCH_MODULE_ID}" = "1.1.2.1" ]
+    [ "${RLCH_MODULE_LEVEL}" = "1" ]
+    [ "${RLCH_MODULE_ENABLED}" = "true" ]
+    [ "${RLCH_MODULE_REQUIRES_REBOOT}" = "false" ]
+    [ "${RLCH_MODULE_OPENSCAP_RULE}" = "xccdf_org.ssgproject.content_rule_partition_for_tmp" ]
 }
