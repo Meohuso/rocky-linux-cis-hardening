@@ -8,7 +8,10 @@
 # instead of invoking findmnt, mount, or editing /etc/fstab directly.
 
 if [[ -n "${RLCH_MOUNT_LIBRARY_LOADED:-}" ]]; then
-    return 0 2>/dev/null || exit 0
+    if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+        return 0
+    fi
+    exit 0
 fi
 readonly RLCH_MOUNT_LIBRARY_LOADED=1
 
@@ -234,7 +237,6 @@ mount_fstab_entry() {
     local options
     local dump_value
     local pass_value
-    local extra
     local decoded_target
 
     normalized_target="$(mount_normalize_target "${requested_target}")" || return 1
@@ -250,9 +252,14 @@ mount_fstab_entry() {
         options=""
         dump_value=""
         pass_value=""
-        extra=""
 
-        read -r source target filesystem options dump_value pass_value extra <<< "${line}"
+        read -r \
+            source \
+            target \
+            filesystem \
+            options \
+            dump_value \
+            pass_value <<< "${line}"
 
         [[ -n "${source}" && -n "${target}" && -n "${filesystem}" && -n "${options}" ]] || continue
         decoded_target="$(_mount_decode_fstab_field "${target}")"
@@ -541,7 +548,6 @@ mount_write_fstab_option() {
     local options
     local dump_value
     local pass_value
-    local extra
     local decoded_target
     local updated_options
     local found=0
@@ -575,9 +581,14 @@ mount_write_fstab_option() {
         options=""
         dump_value=""
         pass_value=""
-        extra=""
 
-        read -r source target filesystem options dump_value pass_value extra <<< "${line}"
+        read -r \
+            source \
+            target \
+            filesystem \
+            options \
+            dump_value \
+            pass_value <<< "${line}"
 
         if [[ -z "${source}" || -z "${target}" || -z "${filesystem}" || -z "${options}" ]]; then
             printf '%s\n' "${line}" >> "${temporary_path}" || {
