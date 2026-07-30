@@ -9,9 +9,7 @@
 
 readonly RLCH_CIS_1_1_2_1_MOUNT_TARGET="/tmp"
 
-RLCH_CIS_1_1_2_1_FSTAB="${
-    RLCH_CIS_1_1_2_1_FSTAB:-${RLCH_MOUNT_FSTAB:-/etc/fstab}
-}"
+RLCH_CIS_1_1_2_1_FSTAB="${RLCH_CIS_1_1_2_1_FSTAB:-${RLCH_MOUNT_FSTAB:-/etc/fstab}}"
 
 ##
 # Check whether /tmp has its own persistent and runtime mount.
