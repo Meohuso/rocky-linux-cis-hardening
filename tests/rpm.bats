@@ -202,3 +202,36 @@ EOF
 
     [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
 }
+
+@test "dnf_list_enabled_repositories lists enabled repositories" {
+    add_dnf_test_repository "baseos" "Rocky Linux BaseOS"
+    add_dnf_test_repository "appstream" "Rocky Linux AppStream"
+
+    run dnf_list_enabled_repositories
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
+    [[ "${output}" == *"baseos"* ]]
+    [[ "${output}" == *"appstream"* ]]
+}
+
+@test "dnf_has_enabled_repositories succeeds when repositories are enabled" {
+    add_dnf_test_repository "baseos" "Rocky Linux BaseOS"
+
+    run dnf_has_enabled_repositories
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
+}
+
+@test "dnf_has_enabled_repositories reports non-compliance when no repository is enabled" {
+    run dnf_has_enabled_repositories
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
+}
+
+@test "dnf_has_enabled_repositories reports non-compliance when dnf fails" {
+    set_dnf_test_exit_status "1"
+
+    run dnf_has_enabled_repositories
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
+}

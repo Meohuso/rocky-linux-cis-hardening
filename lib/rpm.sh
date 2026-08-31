@@ -14,6 +14,7 @@ fi
 readonly RLCH_RPM_LOADED=1
 
 RLCH_RPM_COMMAND="${RLCH_RPM_COMMAND:-rpm}"
+RLCH_DNF_COMMAND="${RLCH_DNF_COMMAND:-dnf}"
 RLCH_DNF_CONFIG="${RLCH_DNF_CONFIG:-/etc/dnf/dnf.conf}"
 RLCH_DNF_CONFIG_BACKUP_SUFFIX="${RLCH_DNF_CONFIG_BACKUP_SUFFIX:-.rlch.bak}"
 
@@ -225,4 +226,43 @@ dnf_rollback_config() {
     fi
 
     return "${RLCH_MODULE_RESULT_CHANGED}"
+}
+
+dnf_list_enabled_repositories() {
+    "${RLCH_DNF_COMMAND}" -q repolist --enabled 2>/dev/null
+}
+
+dnf_has_enabled_repositories() {
+    local output
+    local repository_count
+
+    if ! output="$(dnf_list_enabled_repositories)"; then
+        return "${RLCH_MODULE_RESULT_NON_COMPLIANT}"
+    fi
+
+    repository_count="$(
+        awk '
+            /^[[:space:]]*repo id[[:space:]]+repo name[[:space:]]*$/ {
+                next
+            }
+
+            /^[[:space:]]*$/ {
+                next
+            }
+
+            {
+                count++
+            }
+
+            END {
+                print count + 0
+            }
+        ' <<< "${output}"
+    )"
+
+    if [[ "${repository_count}" -gt 0 ]]; then
+        return "${RLCH_MODULE_RESULT_SUCCESS}"
+    fi
+
+    return "${RLCH_MODULE_RESULT_NON_COMPLIANT}"
 }
