@@ -2,7 +2,7 @@
 #
 # Rocky Linux CIS Hardening Framework
 #
-# RPM library tests.
+# RPM and DNF library tests.
 #
 # SPDX-License-Identifier: MIT
 #
@@ -53,4 +53,152 @@ teardown() {
     run rpm_has_gpg_keys
 
     [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
+}
+
+@test "dnf_main_option_value reads gpgcheck from the main section" {
+    write_dnf_test_config <<'EOF'
+[main]
+gpgcheck=1
+EOF
+
+    run dnf_main_option_value "gpgcheck" "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq 0 ]
+    [ "${output}" = "1" ]
+}
+
+@test "dnf_main_option_value ignores repository sections" {
+    write_dnf_test_config <<'EOF'
+[main]
+best=True
+
+[example]
+gpgcheck=1
+EOF
+
+    run dnf_main_option_value "gpgcheck" "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -ne 0 ]
+}
+
+@test "dnf_main_option_is_enabled succeeds when gpgcheck equals one" {
+    write_dnf_test_config <<'EOF'
+[main]
+gpgcheck = 1
+EOF
+
+    run dnf_main_option_is_enabled "gpgcheck" "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
+}
+
+@test "dnf_main_option_is_enabled reports non-compliance when gpgcheck is zero" {
+    write_dnf_test_config <<'EOF'
+[main]
+gpgcheck=0
+EOF
+
+    run dnf_main_option_is_enabled "gpgcheck" "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
+}
+
+@test "dnf_main_option_is_enabled reports non-compliance when gpgcheck is absent" {
+    run dnf_main_option_is_enabled "gpgcheck" "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
+}
+
+@test "dnf_set_main_option enables gpgcheck and creates a backup" {
+    write_dnf_test_config <<'EOF'
+[main]
+gpgcheck=0
+best=True
+EOF
+
+    run dnf_set_main_option "gpgcheck" "1" "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
+    grep -Fxq "gpgcheck=1" "${RLCH_TEST_DNF_CONFIG}"
+    grep -Fxq "gpgcheck=0" "${RLCH_TEST_DNF_CONFIG}${RLCH_DNF_CONFIG_BACKUP_SUFFIX}"
+}
+
+@test "dnf_set_main_option is idempotent when gpgcheck is already enabled" {
+    write_dnf_test_config <<'EOF'
+[main]
+gpgcheck=1
+EOF
+
+    run dnf_set_main_option "gpgcheck" "1" "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
+    [ ! -e "${RLCH_TEST_DNF_CONFIG}${RLCH_DNF_CONFIG_BACKUP_SUFFIX}" ]
+}
+
+@test "dnf_set_main_option removes duplicate active gpgcheck entries" {
+    write_dnf_test_config <<'EOF'
+[main]
+gpgcheck=0
+gpgcheck = 0
+best=True
+EOF
+
+    run dnf_set_main_option "gpgcheck" "1" "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
+    [ "$(grep -Ec '^[[:space:]]*gpgcheck[[:space:]]*=' "${RLCH_TEST_DNF_CONFIG}")" -eq 1 ]
+    grep -Fxq "gpgcheck=1" "${RLCH_TEST_DNF_CONFIG}"
+}
+
+@test "dnf_set_main_option adds gpgcheck to an existing main section" {
+    write_dnf_test_config <<'EOF'
+[main]
+best=True
+
+[example]
+enabled=1
+EOF
+
+    run dnf_set_main_option "gpgcheck" "1" "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
+    grep -Fxq "gpgcheck=1" "${RLCH_TEST_DNF_CONFIG}"
+}
+
+@test "dnf_set_main_option requires root privileges" {
+    set_rpm_test_effective_uid "1000"
+
+    run dnf_set_main_option "gpgcheck" "1" "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+}
+
+@test "dnf_rollback_config restores the backup" {
+    write_dnf_test_config <<'EOF'
+[main]
+gpgcheck=0
+EOF
+    create_dnf_test_config_backup
+
+    printf '[main]\ngpgcheck=1\n' > "${RLCH_TEST_DNF_CONFIG}"
+
+    run dnf_rollback_config "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
+    grep -Fxq "gpgcheck=0" "${RLCH_TEST_DNF_CONFIG}"
+}
+
+@test "dnf_rollback_config is idempotent when no backup exists" {
+    run dnf_rollback_config "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
+}
+
+@test "dnf_rollback_config requires root privileges" {
+    create_dnf_test_config_backup
+    set_rpm_test_effective_uid "1000"
+
+    run dnf_rollback_config "${RLCH_TEST_DNF_CONFIG}"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
 }
