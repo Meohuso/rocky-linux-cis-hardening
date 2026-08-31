@@ -28,24 +28,29 @@ teardown() {
 
     run rpm_list_gpg_keys
 
-    [ "${status}" -eq 0 ]
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
     [[ "${output}" == *"gpg-pubkey-350d275d-6279464b"* ]]
     [[ "${output}" == *"gpg-pubkey-702d426d-6382fa7c"* ]]
 }
 
-@test "rpm_has_gpg_keys is compliant when at least one GPG key is installed" {
+@test "rpm_has_gpg_keys succeeds when at least one GPG key is installed" {
     add_rpm_test_gpg_key "gpg-pubkey-350d275d-6279464b"
+
     run rpm_has_gpg_keys
-    [ "${status}" -eq "${RLCH_MODULE_RESULT_COMPLIANT}" ]
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
 }
 
 @test "rpm_has_gpg_keys is non-compliant when no GPG key is installed" {
     run rpm_has_gpg_keys
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
 }
 
 @test "rpm_has_gpg_keys is non-compliant when rpm query fails" {
     set_rpm_test_exit_status "1"
+
     run rpm_has_gpg_keys
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
 }

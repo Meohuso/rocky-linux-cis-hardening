@@ -7,6 +7,12 @@
 # SPDX-License-Identifier: MIT
 #
 
+# Prevent multiple sourcing.
+if [[ -n "${RLCH_RPM_LOADED:-}" ]]; then
+    return 0
+fi
+readonly RLCH_RPM_LOADED=1
+
 RLCH_RPM_COMMAND="${RLCH_RPM_COMMAND:-rpm}"
 
 rpm_list_gpg_keys() {
@@ -24,5 +30,5 @@ rpm_has_gpg_keys() {
         return "${RLCH_MODULE_RESULT_NON_COMPLIANT}"
     fi
 
-    return "${RLCH_MODULE_RESULT_COMPLIANT}"
+    return "${RLCH_MODULE_RESULT_SUCCESS}"
 }

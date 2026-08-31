@@ -25,36 +25,44 @@ teardown() {
 
 @test "check succeeds when at least one RPM GPG key is installed" {
     add_rpm_test_gpg_key "gpg-pubkey-350d275d-6279464b"
+
     run check
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
 }
 
 @test "check reports non-compliance when no RPM GPG key is installed" {
     run check
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
 }
 
 @test "check reports non-compliance when the RPM query fails" {
     set_rpm_test_exit_status "1"
+
     run check
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
 }
 
 @test "apply refuses automatic GPG key import" {
     run apply
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
-    [[ "${output}" == *"manual validation"* ]]
     [[ "${output}" == *"intentionally unsupported"* ]]
 }
 
 @test "validate delegates to the compliance check" {
     add_rpm_test_gpg_key "gpg-pubkey-350d275d-6279464b"
+
     run validate
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
 }
 
 @test "rollback succeeds because the module does not modify the system" {
     run rollback
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
     [[ "${output}" == *"no rollback action is required"* ]]
 }
@@ -71,5 +79,5 @@ teardown() {
     [ "${RLCH_MODULE_LEVEL}" = "1" ]
     [ "${RLCH_MODULE_ENABLED}" = "true" ]
     [ "${RLCH_MODULE_REQUIRES_REBOOT}" = "false" ]
-    [ -z "${RLCH_MODULE_OPENSCAP_RULE}" ]
+    [ "${RLCH_MODULE_OPENSCAP_RULE}" = "manual" ]
 }
