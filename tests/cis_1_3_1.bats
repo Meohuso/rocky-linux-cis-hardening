@@ -71,8 +71,13 @@ teardown() {
 }
 
 @test "rollback removes AIDE when this module installed it" {
-    apply
-    [ "$?" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
+    apply_result=0
+
+    apply || apply_result=$?
+
+    [ "${apply_result}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
+    [ "${RLCH_CIS_1_3_1_INSTALLED_BY_MODULE}" = "true" ]
+    grep -Fxq "aide" "${RLCH_TEST_RPM_PACKAGES}"
 
     run rollback
 
