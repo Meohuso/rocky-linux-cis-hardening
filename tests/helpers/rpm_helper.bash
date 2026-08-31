@@ -11,6 +11,7 @@ setup_rpm_test_environment() {
     RLCH_TEST_RPM_DIR="${BATS_TEST_TMPDIR}/rpm-test"
     RLCH_TEST_RPM_BIN="${RLCH_TEST_RPM_DIR}/bin"
     RLCH_TEST_RPM_KEYS="${RLCH_TEST_RPM_DIR}/gpg-keys"
+    RLCH_TEST_RPM_PACKAGES="${RLCH_TEST_RPM_DIR}/installed-packages"
     RLCH_TEST_RPM_EXIT_STATUS="${RLCH_TEST_RPM_DIR}/exit-status"
     RLCH_TEST_DNF_REPOSITORIES="${RLCH_TEST_RPM_DIR}/dnf-repositories"
     RLCH_TEST_DNF_EXIT_STATUS="${RLCH_TEST_RPM_DIR}/dnf-exit-status"
@@ -18,6 +19,7 @@ setup_rpm_test_environment() {
 
     mkdir -p "${RLCH_TEST_RPM_BIN}"
     : > "${RLCH_TEST_RPM_KEYS}"
+    : > "${RLCH_TEST_RPM_PACKAGES}"
     : > "${RLCH_TEST_DNF_REPOSITORIES}"
     printf '0\n' > "${RLCH_TEST_RPM_EXIT_STATUS}"
     printf '0\n' > "${RLCH_TEST_DNF_EXIT_STATUS}"
@@ -26,25 +28,35 @@ setup_rpm_test_environment() {
     cat > "${RLCH_TEST_RPM_BIN}/rpm" <<'EOF'
 #!/usr/bin/env bash
 
-if [[ "${1:-}" != "-q" || "${2:-}" != "gpg-pubkey" ]]; then
-    exit 2
-fi
-
 status="$(cat "${RLCH_TEST_RPM_EXIT_STATUS}")"
 
 if [[ "${status}" -ne 0 ]]; then
     exit "${status}"
 fi
 
-cat "${RLCH_TEST_RPM_KEYS}"
+if [[ "${1:-}" != "-q" || -z "${2:-}" ]]; then
+    exit 2
+fi
+
+if [[ "${2}" == "gpg-pubkey" ]]; then
+    if [[ ! -s "${RLCH_TEST_RPM_KEYS}" ]]; then
+        exit 1
+    fi
+
+    cat "${RLCH_TEST_RPM_KEYS}"
+    exit 0
+fi
+
+if grep -Fxq -- "${2}" "${RLCH_TEST_RPM_PACKAGES}"; then
+    printf '%s\n' "${2}-1.0-1.test"
+    exit 0
+fi
+
+exit 1
 EOF
 
     cat > "${RLCH_TEST_RPM_BIN}/dnf" <<'EOF'
 #!/usr/bin/env bash
-
-if [[ "${1:-}" != "-q" || "${2:-}" != "repolist" || "${3:-}" != "--enabled" ]]; then
-    exit 2
-fi
 
 status="$(cat "${RLCH_TEST_DNF_EXIT_STATUS}")"
 
@@ -52,10 +64,33 @@ if [[ "${status}" -ne 0 ]]; then
     exit "${status}"
 fi
 
-if [[ -s "${RLCH_TEST_DNF_REPOSITORIES}" ]]; then
-    printf '%-24s %s\n' "repo id" "repo name"
-    cat "${RLCH_TEST_DNF_REPOSITORIES}"
+if [[ "${1:-}" == "-q" && "${2:-}" == "repolist" && "${3:-}" == "--enabled" ]]; then
+    if [[ -s "${RLCH_TEST_DNF_REPOSITORIES}" ]]; then
+        printf '%-24s %s\n' "repo id" "repo name"
+        cat "${RLCH_TEST_DNF_REPOSITORIES}"
+    fi
+
+    exit 0
 fi
+
+if [[ "${1:-}" == "-y" && "${2:-}" == "install" && -n "${3:-}" ]]; then
+    if ! grep -Fxq -- "${3}" "${RLCH_TEST_RPM_PACKAGES}"; then
+        printf '%s\n' "${3}" >> "${RLCH_TEST_RPM_PACKAGES}"
+    fi
+
+    exit 0
+fi
+
+if [[ "${1:-}" == "-y" && "${2:-}" == "remove" && -n "${3:-}" ]]; then
+    temporary_file="${RLCH_TEST_RPM_PACKAGES}.tmp"
+
+    grep -Fvx -- "${3}" "${RLCH_TEST_RPM_PACKAGES}" > "${temporary_file}" || true
+    mv -f -- "${temporary_file}" "${RLCH_TEST_RPM_PACKAGES}"
+
+    exit 0
+fi
+
+exit 2
 EOF
 
     cat > "${RLCH_TEST_RPM_BIN}/id" <<'EOF'
@@ -74,6 +109,7 @@ EOF
     chmod +x "${RLCH_TEST_RPM_BIN}/id"
 
     export RLCH_TEST_RPM_KEYS
+    export RLCH_TEST_RPM_PACKAGES
     export RLCH_TEST_RPM_EXIT_STATUS
     export RLCH_TEST_DNF_REPOSITORIES
     export RLCH_TEST_DNF_EXIT_STATUS
@@ -96,6 +132,14 @@ add_rpm_test_gpg_key() {
     local package_name="${1:?GPG key package name is required}"
 
     printf '%s\n' "${package_name}" >> "${RLCH_TEST_RPM_KEYS}"
+}
+
+add_rpm_test_package() {
+    local package_name="${1:?Package name is required}"
+
+    if ! grep -Fxq -- "${package_name}" "${RLCH_TEST_RPM_PACKAGES}"; then
+        printf '%s\n' "${package_name}" >> "${RLCH_TEST_RPM_PACKAGES}"
+    fi
 }
 
 set_rpm_test_exit_status() {

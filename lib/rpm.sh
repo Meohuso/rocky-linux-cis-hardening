@@ -36,6 +36,72 @@ rpm_has_gpg_keys() {
     return "${RLCH_MODULE_RESULT_SUCCESS}"
 }
 
+rpm_package_is_installed() {
+    local package_name="${1:-}"
+
+    if [[ -z "${package_name}" ]]; then
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+
+    if "${RLCH_RPM_COMMAND}" -q "${package_name}" >/dev/null 2>&1; then
+        return "${RLCH_MODULE_RESULT_SUCCESS}"
+    fi
+
+    return "${RLCH_MODULE_RESULT_NON_COMPLIANT}"
+}
+
+dnf_install_package() {
+    local package_name="${1:-}"
+
+    if [[ -z "${package_name}" ]]; then
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+
+    if rpm_package_is_installed "${package_name}"; then
+        return "${RLCH_MODULE_RESULT_SUCCESS}"
+    fi
+
+    if [[ "$(id -u)" -ne 0 ]]; then
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+
+    if ! "${RLCH_DNF_COMMAND}" -y install "${package_name}"; then
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+
+    if ! rpm_package_is_installed "${package_name}"; then
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+
+    return "${RLCH_MODULE_RESULT_CHANGED}"
+}
+
+dnf_remove_package() {
+    local package_name="${1:-}"
+
+    if [[ -z "${package_name}" ]]; then
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+
+    if ! rpm_package_is_installed "${package_name}"; then
+        return "${RLCH_MODULE_RESULT_SUCCESS}"
+    fi
+
+    if [[ "$(id -u)" -ne 0 ]]; then
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+
+    if ! "${RLCH_DNF_COMMAND}" -y remove "${package_name}"; then
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+
+    if rpm_package_is_installed "${package_name}"; then
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+
+    return "${RLCH_MODULE_RESULT_CHANGED}"
+}
+
 dnf_main_option_value() {
     local option="${1:-}"
     local config_file="${2:-${RLCH_DNF_CONFIG}}"

@@ -55,6 +55,81 @@ teardown() {
     [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
 }
 
+@test "rpm_package_is_installed succeeds for an installed package" {
+    add_rpm_test_package "aide"
+
+    run rpm_package_is_installed "aide"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
+}
+
+@test "rpm_package_is_installed reports non-compliance for a missing package" {
+    run rpm_package_is_installed "aide"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
+}
+
+@test "rpm_package_is_installed rejects an empty package name" {
+    run rpm_package_is_installed ""
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+}
+
+@test "dnf_install_package installs a missing package" {
+    run dnf_install_package "aide"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
+    grep -Fxq "aide" "${RLCH_TEST_RPM_PACKAGES}"
+}
+
+@test "dnf_install_package is idempotent for an installed package" {
+    add_rpm_test_package "aide"
+
+    run dnf_install_package "aide"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
+}
+
+@test "dnf_install_package requires root for a missing package" {
+    set_rpm_test_effective_uid "1000"
+
+    run dnf_install_package "aide"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+}
+
+@test "dnf_install_package reports an error when dnf fails" {
+    set_dnf_test_exit_status "1"
+
+    run dnf_install_package "aide"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+}
+
+@test "dnf_remove_package removes an installed package" {
+    add_rpm_test_package "aide"
+
+    run dnf_remove_package "aide"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
+    ! grep -Fxq "aide" "${RLCH_TEST_RPM_PACKAGES}"
+}
+
+@test "dnf_remove_package is idempotent for a missing package" {
+    run dnf_remove_package "aide"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
+}
+
+@test "dnf_remove_package requires root for an installed package" {
+    add_rpm_test_package "aide"
+    set_rpm_test_effective_uid "1000"
+
+    run dnf_remove_package "aide"
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+}
+
 @test "dnf_main_option_value reads gpgcheck from the main section" {
     write_dnf_test_config <<'EOF'
 [main]
