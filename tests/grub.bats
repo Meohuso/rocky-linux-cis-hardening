@@ -118,6 +118,8 @@ EOF
 
     [ "${status}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
     [ "$(stat -Lc '%a' "${RLCH_TEST_GRUB_CONFIG}")" = "600" ]
+    [ "$(stat -Lc '%u' "${RLCH_TEST_GRUB_CONFIG}")" = "0" ]
+    [ "$(stat -Lc '%g' "${RLCH_TEST_GRUB_CONFIG}")" = "0" ]
     [ -e "${RLCH_TEST_GRUB_CONFIG}${RLCH_GRUB_BACKUP_SUFFIX}" ]
 }
 

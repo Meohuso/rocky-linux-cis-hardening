@@ -52,14 +52,14 @@ grub_file_access_is_configured() {
         return "${RLCH_MODULE_RESULT_SUCCESS}"
     fi
 
-    if ! owner="$(stat -Lc '%U' -- "${file}")" ||
-       ! group="$(stat -Lc '%G' -- "${file}")" ||
+    if ! owner="$(stat -Lc '%u' -- "${file}")" ||
+       ! group="$(stat -Lc '%g' -- "${file}")" ||
        ! mode="$(stat -Lc '%a' -- "${file}")"; then
         return "${RLCH_MODULE_RESULT_ERROR}"
     fi
 
-    if [[ "${owner}" == "root" &&
-          "${group}" == "root" &&
+    if [[ "${owner}" == "0" &&
+          "${group}" == "0" &&
           "${mode}" == "600" ]]; then
         return "${RLCH_MODULE_RESULT_SUCCESS}"
     fi
@@ -94,7 +94,7 @@ grub_set_file_access() {
         return "${RLCH_MODULE_RESULT_ERROR}"
     fi
 
-    if ! chown root:root -- "${file}" ||
+    if ! chown 0:0 -- "${file}" ||
        ! chmod 0600 -- "${file}"; then
         return "${RLCH_MODULE_RESULT_ERROR}"
     fi
