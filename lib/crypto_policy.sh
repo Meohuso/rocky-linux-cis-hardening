@@ -207,6 +207,31 @@ crypto_policy_sha1_is_disabled() {
     return "${RLCH_MODULE_RESULT_SUCCESS}"
 }
 
+crypto_policy_weak_macs_are_disabled() {
+    local current_file="${1:-${RLCH_CRYPTO_POLICY_CURRENT_FILE}}"
+
+    if [[ ! -f "${current_file}" ]]; then
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+
+    if awk -F= '
+        /^[[:space:]]*mac[[:space:]]*=/ {
+            value = $2
+            sub(/[[:space:]]*#.*/, "", value)
+            if (value ~ /(^|[[:space:]])[^[:space:]]*-64([^[:space:]]*)?([[:space:]]|$)/) {
+                found = 1
+            }
+        }
+        END {
+            exit(found ? 0 : 1)
+        }
+    ' "${current_file}"; then
+        return "${RLCH_MODULE_RESULT_NON_COMPLIANT}"
+    fi
+
+    return "${RLCH_MODULE_RESULT_SUCCESS}"
+}
+
 crypto_policy_write_module() {
     local file="${1:-}"
     shift || true
