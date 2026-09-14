@@ -2,103 +2,184 @@
 
 setup() {
     export RLCH_TEST_REPOSITORY_ROOT="${BATS_TEST_DIRNAME}/.."
+
+    # shellcheck source=tests/test_helper.bash
     source "${RLCH_TEST_REPOSITORY_ROOT}/tests/test_helper.bash"
+    # shellcheck source=lib/module_api.sh
     source "${RLCH_TEST_REPOSITORY_ROOT}/lib/module_api.sh"
+    # shellcheck source=tests/helpers/snmp_server_helper.bash
     source "${RLCH_TEST_REPOSITORY_ROOT}/tests/helpers/snmp_server_helper.bash"
+
     snmp_server_helper_setup
+
+    # shellcheck source=modules/cis/2/1/14/module.sh
     source "${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/2/1/14/module.sh"
 }
 
 @test "check succeeds when net-snmp is not installed" {
     RLCH_TEST_SNMP_INSTALLED="false"
+
     run check
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
 }
 
 @test "check reports non-compliance when net-snmp is installed" {
     RLCH_TEST_SNMP_INSTALLED="true"
+
     run check
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
 }
 
 @test "apply removes net-snmp when it is installed" {
-    local result=0
+    local apply_result=0
+
     RLCH_TEST_SNMP_INSTALLED="true"
-    EUID=0
-    apply || result=$?
-    [ "${result}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
+    RLCH_TEST_SNMP_EFFECTIVE_UID="0"
+
+    apply || apply_result=$?
+
+    [ "${apply_result}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
     [ "${RLCH_TEST_SNMP_INSTALLED}" == "false" ]
     [ -f "${RLCH_CIS_2_1_14_STATE_FILE}" ]
+    [ "$(cat "${RLCH_CIS_2_1_14_STATE_FILE}")" = "net-snmp" ]
 }
 
 @test "apply is idempotent when net-snmp is already absent" {
     RLCH_TEST_SNMP_INSTALLED="false"
+
     run apply
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
+    [ ! -e "${RLCH_CIS_2_1_14_STATE_FILE}" ]
 }
 
 @test "apply fails without root privileges when remediation is required" {
     RLCH_TEST_SNMP_INSTALLED="true"
-    EUID=1000
+    RLCH_TEST_SNMP_EFFECTIVE_UID="1000"
+
     run apply
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
     [[ "${output}" == *"requires root privileges"* ]]
 }
 
-@test "apply returns error when dnf removal fails" {
+@test "apply returns error when effective uid cannot be determined" {
     RLCH_TEST_SNMP_INSTALLED="true"
-    RLCH_TEST_SNMP_DNF_REMOVE_FAIL="true"
-    EUID=0
+    RLCH_TEST_SNMP_ID_FAIL="true"
+
     run apply
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+    [[ "${output}" == *"Unable to determine effective user ID"* ]]
+}
+
+@test "apply returns error when dnf removal fails and keeps rollback state" {
+    RLCH_TEST_SNMP_INSTALLED="true"
+    RLCH_TEST_SNMP_EFFECTIVE_UID="0"
+    RLCH_TEST_SNMP_DNF_REMOVE_FAIL="true"
+
+    run apply
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+    [ -f "${RLCH_CIS_2_1_14_STATE_FILE}" ]
+}
+
+@test "apply returns error when package remains installed after removal" {
+    RLCH_TEST_SNMP_INSTALLED="true"
+    RLCH_TEST_SNMP_EFFECTIVE_UID="0"
+    RLCH_TEST_SNMP_KEEP_INSTALLED_AFTER_REMOVE="true"
+
+    run apply
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
     [ -f "${RLCH_CIS_2_1_14_STATE_FILE}" ]
 }
 
 @test "validate delegates to the compliance check" {
     RLCH_TEST_SNMP_INSTALLED="false"
+
     run validate
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
+
     RLCH_TEST_SNMP_INSTALLED="true"
+
     run validate
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_NON_COMPLIANT}" ]
 }
 
 @test "rollback reinstalls net-snmp when this module removed it" {
-    local result=0
+    local rollback_result=0
+
     RLCH_TEST_SNMP_INSTALLED="false"
-    EUID=0
+    RLCH_TEST_SNMP_EFFECTIVE_UID="0"
+
     mkdir -p "${RLCH_CIS_2_1_14_STATE_DIR}"
     printf '%s\n' "net-snmp" > "${RLCH_CIS_2_1_14_STATE_FILE}"
-    rollback || result=$?
-    [ "${result}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
+
+    rollback || rollback_result=$?
+
+    [ "${rollback_result}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
     [ "${RLCH_TEST_SNMP_INSTALLED}" == "true" ]
     [ ! -e "${RLCH_CIS_2_1_14_STATE_FILE}" ]
 }
 
 @test "rollback is idempotent when no rollback state exists" {
+    RLCH_TEST_SNMP_INSTALLED="false"
+
     run rollback
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_SUCCESS}" ]
 }
 
 @test "rollback fails without root privileges when restoration is required" {
-    EUID=1000
+    RLCH_TEST_SNMP_INSTALLED="false"
+    RLCH_TEST_SNMP_EFFECTIVE_UID="1000"
+
     mkdir -p "${RLCH_CIS_2_1_14_STATE_DIR}"
     printf '%s\n' "net-snmp" > "${RLCH_CIS_2_1_14_STATE_FILE}"
+
     run rollback
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+    [ -e "${RLCH_CIS_2_1_14_STATE_FILE}" ]
 }
 
 @test "rollback returns error when dnf installation fails" {
+    RLCH_TEST_SNMP_INSTALLED="false"
+    RLCH_TEST_SNMP_EFFECTIVE_UID="0"
     RLCH_TEST_SNMP_DNF_INSTALL_FAIL="true"
-    EUID=0
+
     mkdir -p "${RLCH_CIS_2_1_14_STATE_DIR}"
     printf '%s\n' "net-snmp" > "${RLCH_CIS_2_1_14_STATE_FILE}"
+
     run rollback
+
     [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+    [ -e "${RLCH_CIS_2_1_14_STATE_FILE}" ]
+}
+
+@test "rollback returns error when package is still absent after installation" {
+    RLCH_TEST_SNMP_INSTALLED="false"
+    RLCH_TEST_SNMP_EFFECTIVE_UID="0"
+    RLCH_TEST_SNMP_KEEP_REMOVED_AFTER_INSTALL="true"
+
+    mkdir -p "${RLCH_CIS_2_1_14_STATE_DIR}"
+    printf '%s\n' "net-snmp" > "${RLCH_CIS_2_1_14_STATE_FILE}"
+
+    run rollback
+
+    [ "${status}" -eq "${RLCH_MODULE_RESULT_ERROR}" ]
+    [ -e "${RLCH_CIS_2_1_14_STATE_FILE}" ]
 }
 
 @test "metadata declares the expected CIS control" {
+    # shellcheck source=/dev/null
     source "${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/2/1/14/metadata.conf"
+
     [ "${RLCH_MODULE_ID}" = "2.1.14" ]
     [ "${RLCH_MODULE_LEVEL}" = "1" ]
     [ "${RLCH_MODULE_ENABLED}" = "true" ]

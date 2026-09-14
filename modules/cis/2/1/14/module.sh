@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 #
 # Rocky Linux CIS Hardening Framework
+#
 # CIS 2.1.14 - Ensure snmp services are not in use.
+#
 # SPDX-License-Identifier: MIT
 #
 
 RLCH_CIS_2_1_14_PACKAGE="${RLCH_CIS_2_1_14_PACKAGE:-net-snmp}"
 RLCH_CIS_2_1_14_RPM_COMMAND="${RLCH_CIS_2_1_14_RPM_COMMAND:-rpm}"
 RLCH_CIS_2_1_14_DNF_COMMAND="${RLCH_CIS_2_1_14_DNF_COMMAND:-dnf}"
+RLCH_CIS_2_1_14_ID_COMMAND="${RLCH_CIS_2_1_14_ID_COMMAND:-id}"
 RLCH_CIS_2_1_14_STATE_DIR="${RLCH_CIS_2_1_14_STATE_DIR:-/var/lib/rlch/cis/2.1.14}"
 RLCH_CIS_2_1_14_STATE_FILE="${RLCH_CIS_2_1_14_STATE_FILE:-${RLCH_CIS_2_1_14_STATE_DIR}/package-removed}"
 
@@ -16,10 +19,18 @@ cis_2_1_14_package_installed() {
 }
 
 cis_2_1_14_require_root() {
-    if [[ "${EUID}" -ne 0 ]]; then
+    local effective_uid
+
+    if ! effective_uid="$("${RLCH_CIS_2_1_14_ID_COMMAND}" -u 2>/dev/null)"; then
+        error_message "Unable to determine effective user ID for CIS 2.1.14."
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+
+    if [[ "${effective_uid}" != "0" ]]; then
         error_message "CIS 2.1.14 requires root privileges."
         return "${RLCH_MODULE_RESULT_ERROR}"
     fi
+
     return "${RLCH_MODULE_RESULT_SUCCESS}"
 }
 
@@ -28,10 +39,12 @@ cis_2_1_14_create_state() {
         error_message "Unable to create CIS 2.1.14 state directory: ${RLCH_CIS_2_1_14_STATE_DIR}"
         return "${RLCH_MODULE_RESULT_ERROR}"
     fi
+
     if ! printf '%s\n' "${RLCH_CIS_2_1_14_PACKAGE}" > "${RLCH_CIS_2_1_14_STATE_FILE}"; then
         error_message "Unable to write CIS 2.1.14 rollback state: ${RLCH_CIS_2_1_14_STATE_FILE}"
         return "${RLCH_MODULE_RESULT_ERROR}"
     fi
+
     return "${RLCH_MODULE_RESULT_SUCCESS}"
 }
 
@@ -39,13 +52,16 @@ cis_2_1_14_remove_state() {
     if [[ ! -e "${RLCH_CIS_2_1_14_STATE_FILE}" ]]; then
         return "${RLCH_MODULE_RESULT_SUCCESS}"
     fi
+
     if ! rm -f "${RLCH_CIS_2_1_14_STATE_FILE}"; then
         error_message "Unable to remove CIS 2.1.14 rollback state: ${RLCH_CIS_2_1_14_STATE_FILE}"
         return "${RLCH_MODULE_RESULT_ERROR}"
     fi
+
     if [[ -d "${RLCH_CIS_2_1_14_STATE_DIR}" ]]; then
         rmdir "${RLCH_CIS_2_1_14_STATE_DIR}" >/dev/null 2>&1 || true
     fi
+
     return "${RLCH_MODULE_RESULT_SUCCESS}"
 }
 
@@ -53,6 +69,7 @@ check() {
     if cis_2_1_14_package_installed; then
         return "${RLCH_MODULE_RESULT_NON_COMPLIANT}"
     fi
+
     return "${RLCH_MODULE_RESULT_SUCCESS}"
 }
 
@@ -64,6 +81,7 @@ apply() {
     fi
 
     cis_2_1_14_require_root || return "${RLCH_MODULE_RESULT_ERROR}"
+
     cis_2_1_14_create_state || state_result=$?
     if [[ "${state_result}" -ne "${RLCH_MODULE_RESULT_SUCCESS}" ]]; then
         return "${RLCH_MODULE_RESULT_ERROR}"
@@ -99,6 +117,7 @@ rollback() {
         error_message "Unable to read CIS 2.1.14 rollback state: ${RLCH_CIS_2_1_14_STATE_FILE}"
         return "${RLCH_MODULE_RESULT_ERROR}"
     fi
+
     if [[ -z "${package_name}" ]]; then
         error_message "CIS 2.1.14 rollback state does not contain a package name."
         return "${RLCH_MODULE_RESULT_ERROR}"
@@ -117,5 +136,6 @@ rollback() {
     fi
 
     cis_2_1_14_remove_state || return "${RLCH_MODULE_RESULT_ERROR}"
+
     return "${RLCH_MODULE_RESULT_CHANGED}"
 }
