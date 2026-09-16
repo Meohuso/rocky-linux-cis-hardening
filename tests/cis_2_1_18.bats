@@ -1,0 +1,20 @@
+#!/usr/bin/env bats
+setup(){ export RLCH_TEST_REPOSITORY_ROOT="${BATS_TEST_DIRNAME}/.."; source "${RLCH_TEST_REPOSITORY_ROOT}/tests/test_helper.bash"; source "${RLCH_TEST_REPOSITORY_ROOT}/lib/module_api.sh"; source "${RLCH_TEST_REPOSITORY_ROOT}/tests/helpers/web_server_helper.bash"; web_server_helper_setup; source "${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/2/1/18/module.sh"; }
+@test "check compliant when both absent" { run check; [ "$status" -eq "$RLCH_MODULE_RESULT_SUCCESS" ]; }
+@test "check non-compliant for httpd" { RLCH_TEST_WEB_HTTPD_INSTALLED=true; run check; [ "$status" -eq "$RLCH_MODULE_RESULT_NON_COMPLIANT" ]; }
+@test "check non-compliant for nginx" { RLCH_TEST_WEB_NGINX_INSTALLED=true; run check; [ "$status" -eq "$RLCH_MODULE_RESULT_NON_COMPLIANT" ]; }
+@test "apply removes both and records both" { local r=0; RLCH_TEST_WEB_HTTPD_INSTALLED=true; RLCH_TEST_WEB_NGINX_INSTALLED=true; apply || r=$?; [ "$r" -eq "$RLCH_MODULE_RESULT_CHANGED" ]; [ "$RLCH_TEST_WEB_HTTPD_INSTALLED" == false ]; [ "$RLCH_TEST_WEB_NGINX_INSTALLED" == false ]; [ "$(cat "$RLCH_CIS_2_1_18_STATE_FILE")" = $'httpd\nnginx' ]; }
+@test "apply records only installed package" { local r=0; RLCH_TEST_WEB_NGINX_INSTALLED=true; apply || r=$?; [ "$r" -eq "$RLCH_MODULE_RESULT_CHANGED" ]; [ "$(cat "$RLCH_CIS_2_1_18_STATE_FILE")" = nginx ]; }
+@test "apply idempotent" { run apply; [ "$status" -eq "$RLCH_MODULE_RESULT_SUCCESS" ]; [ ! -e "$RLCH_CIS_2_1_18_STATE_FILE" ]; }
+@test "apply requires root" { RLCH_TEST_WEB_HTTPD_INSTALLED=true; RLCH_TEST_WEB_EFFECTIVE_UID=1000; run apply; [ "$status" -eq "$RLCH_MODULE_RESULT_ERROR" ]; [[ "$output" == *"requires root privileges"* ]]; }
+@test "apply handles id failure" { RLCH_TEST_WEB_HTTPD_INSTALLED=true; RLCH_TEST_WEB_ID_FAIL=true; run apply; [ "$status" -eq "$RLCH_MODULE_RESULT_ERROR" ]; }
+@test "apply handles remove failure" { RLCH_TEST_WEB_HTTPD_INSTALLED=true; RLCH_TEST_WEB_DNF_REMOVE_FAIL_PACKAGE=httpd; run apply; [ "$status" -eq "$RLCH_MODULE_RESULT_ERROR" ]; [ -e "$RLCH_CIS_2_1_18_STATE_FILE" ]; }
+@test "apply verifies removal" { RLCH_TEST_WEB_NGINX_INSTALLED=true; RLCH_TEST_WEB_KEEP_INSTALLED_AFTER_REMOVE=nginx; run apply; [ "$status" -eq "$RLCH_MODULE_RESULT_ERROR" ]; }
+@test "validate delegates to check" { run validate; [ "$status" -eq "$RLCH_MODULE_RESULT_SUCCESS" ]; RLCH_TEST_WEB_HTTPD_INSTALLED=true; run validate; [ "$status" -eq "$RLCH_MODULE_RESULT_NON_COMPLIANT" ]; }
+@test "rollback restores only recorded package" { local r=0; mkdir -p "$RLCH_CIS_2_1_18_STATE_DIR"; echo nginx >"$RLCH_CIS_2_1_18_STATE_FILE"; rollback || r=$?; [ "$r" -eq "$RLCH_MODULE_RESULT_CHANGED" ]; [ "$RLCH_TEST_WEB_HTTPD_INSTALLED" == false ]; [ "$RLCH_TEST_WEB_NGINX_INSTALLED" == true ]; [ ! -e "$RLCH_CIS_2_1_18_STATE_FILE" ]; }
+@test "rollback restores both" { local r=0; mkdir -p "$RLCH_CIS_2_1_18_STATE_DIR"; printf '%s\n' httpd nginx >"$RLCH_CIS_2_1_18_STATE_FILE"; rollback || r=$?; [ "$r" -eq "$RLCH_MODULE_RESULT_CHANGED" ]; [ "$RLCH_TEST_WEB_HTTPD_INSTALLED" == true ]; [ "$RLCH_TEST_WEB_NGINX_INSTALLED" == true ]; }
+@test "rollback idempotent" { run rollback; [ "$status" -eq "$RLCH_MODULE_RESULT_SUCCESS" ]; }
+@test "rollback requires root" { RLCH_TEST_WEB_EFFECTIVE_UID=1000; mkdir -p "$RLCH_CIS_2_1_18_STATE_DIR"; echo httpd >"$RLCH_CIS_2_1_18_STATE_FILE"; run rollback; [ "$status" -eq "$RLCH_MODULE_RESULT_ERROR" ]; }
+@test "rollback handles install failure" { RLCH_TEST_WEB_DNF_INSTALL_FAIL_PACKAGE=nginx; mkdir -p "$RLCH_CIS_2_1_18_STATE_DIR"; echo nginx >"$RLCH_CIS_2_1_18_STATE_FILE"; run rollback; [ "$status" -eq "$RLCH_MODULE_RESULT_ERROR" ]; }
+@test "rollback verifies install" { RLCH_TEST_WEB_KEEP_REMOVED_AFTER_INSTALL=httpd; mkdir -p "$RLCH_CIS_2_1_18_STATE_DIR"; echo httpd >"$RLCH_CIS_2_1_18_STATE_FILE"; run rollback; [ "$status" -eq "$RLCH_MODULE_RESULT_ERROR" ]; }
+@test "metadata declares CIS 2.1.18" { source "${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/2/1/18/metadata.conf"; [ "$RLCH_MODULE_ID" = 2.1.18 ]; [ "$RLCH_MODULE_LEVEL" = 1 ]; [ "$RLCH_MODULE_ENABLED" = true ]; [ "$RLCH_MODULE_OPENSCAP_RULE" = xccdf_org.ssgproject.content_rule_package_httpd_removed ]; }
