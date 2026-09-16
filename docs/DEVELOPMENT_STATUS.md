@@ -154,6 +154,7 @@ Completed and CI validated:
 - 2.4.1.5
 - 2.4.1.6
 - 2.4.1.7
+- 2.4.1.8
 
 CIS 2.4.1.1 maps to both the ComplianceAsCode package installation and service enablement rules. Its metadata is therefore `manual` because the current schema accepts only one OpenSCAP rule.
 
@@ -168,6 +169,10 @@ CIS 2.4.1.5 applies the corresponding ownership and mode requirements to `/etc/c
 CIS 2.4.1.6 applies the corresponding ownership and mode requirements to `/etc/cron.monthly`, with isolated rollback state preserving its exact original access metadata.
 
 CIS 2.4.1.7 applies the corresponding ownership and mode requirements to `/etc/cron.d`, with isolated rollback state preserving its exact original access metadata.
+
+CIS 2.4.1.8 maps to five ComplianceAsCode rules covering `cron.deny` absence and `cron.allow` existence, ownership, group ownership, and permissions. Its metadata is therefore `manual`; rollback preserves the exact original existence, content, numeric ownership, and mode of both files.
+
+Section 2.4.1 is complete for the Level 1 Server baseline.
 
 ## Known technical debt / mandatory pre-production review
 
