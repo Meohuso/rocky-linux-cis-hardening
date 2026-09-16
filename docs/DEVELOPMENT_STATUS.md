@@ -98,6 +98,7 @@ Completed and CI validated:
 
 - 2.1.1 through 2.1.19
 - 2.1.21
+- 2.1.22
 
 The latest completed implementation commit at the time this document was created is:
 
@@ -111,9 +112,7 @@ Next benchmark item:
 
 The next applicable benchmark item after that skip is 2.1.21. CIS 2.1.21 is implemented with manual OpenSCAP metadata because its ComplianceAsCode mapping contains multiple rules and one tailoring variable while the current metadata schema accepts only one rule.
 
-Next benchmark item:
-
-- 2.1.22 - Ensure only approved services are listening on a network interface - Level 1 Server, Manual.
+CIS 2.1.22 is a manual Level 1 Server control. The framework inventories listening services for organizational approval review and intentionally performs no automatic service shutdown or removal.
 
 ## Known technical debt / mandatory pre-production review
 
