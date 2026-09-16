@@ -135,8 +135,11 @@ Completed and CI validated:
 
 - 2.3.1
 - 2.3.2
+- 2.3.3
 
 CIS 2.3.2 uses the exact OpenSCAP rule for remote chrony sources. Its remediation follows the ComplianceAsCode RHEL tailoring value for the four RHEL time pools.
+
+CIS 2.3.3 uses the exact OpenSCAP rule for the chronyd runtime user. On RHEL-compatible systems, chronyd runs as the chrony user by default, so the module removes only explicit user overrides and preserves the remaining service options.
 
 ## Known technical debt / mandatory pre-production review
 
