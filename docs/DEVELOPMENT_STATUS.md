@@ -97,6 +97,7 @@ Skipped:
 Completed and CI validated:
 
 - 2.1.1 through 2.1.19
+- 2.1.21
 
 The latest completed implementation commit at the time this document was created is:
 
@@ -108,7 +109,11 @@ Next benchmark item:
 
 - 2.1.20 - X Window server services - Level 2 Server, therefore SKIPPED for this Level 1 Server baseline.
 
-After recording/confirming that skip, determine the first applicable control in the next CIS section from the current benchmark source before implementing anything.
+The next applicable benchmark item after that skip is 2.1.21. CIS 2.1.21 is implemented with manual OpenSCAP metadata because its ComplianceAsCode mapping contains multiple rules and one tailoring variable while the current metadata schema accepts only one rule.
+
+Next benchmark item:
+
+- 2.1.22 - Ensure only approved services are listening on a network interface - Level 1 Server, Manual.
 
 ## Known technical debt / mandatory pre-production review
 
