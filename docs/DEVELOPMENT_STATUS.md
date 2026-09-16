@@ -148,8 +148,11 @@ Section 2.3 is complete for the Level 1 Server baseline.
 Completed and CI validated:
 
 - 2.4.1.1
+- 2.4.1.2
 
 CIS 2.4.1.1 maps to both the ComplianceAsCode package installation and service enablement rules. Its metadata is therefore `manual` because the current schema accepts only one OpenSCAP rule.
+
+CIS 2.4.1.2 maps to separate ComplianceAsCode ownership, group ownership, and permission rules for `/etc/crontab`. Its metadata is therefore `manual`; remediation preserves the exact original numeric owner, group, and mode for rollback.
 
 ## Known technical debt / mandatory pre-production review
 
