@@ -149,10 +149,13 @@ Completed and CI validated:
 
 - 2.4.1.1
 - 2.4.1.2
+- 2.4.1.3
 
 CIS 2.4.1.1 maps to both the ComplianceAsCode package installation and service enablement rules. Its metadata is therefore `manual` because the current schema accepts only one OpenSCAP rule.
 
 CIS 2.4.1.2 maps to separate ComplianceAsCode ownership, group ownership, and permission rules for `/etc/crontab`. Its metadata is therefore `manual`; remediation preserves the exact original numeric owner, group, and mode for rollback.
+
+CIS 2.4.1.3 applies the corresponding ownership and mode requirements to `/etc/cron.hourly`. Its rollback state is isolated from the other cron controls and preserves the exact original numeric owner, group, and mode.
 
 ## Known technical debt / mandatory pre-production review
 
