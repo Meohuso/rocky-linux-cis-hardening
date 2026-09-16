@@ -119,6 +119,11 @@ CIS 2.1.22 is a manual Level 1 Server control. The framework inventories listeni
 Completed and CI validated:
 
 - 2.2.1
+- 2.2.3
+
+Skipped:
+
+- 2.2.2 - Level 2 Server only for this project baseline.
 
 ## Known technical debt / mandatory pre-production review
 
