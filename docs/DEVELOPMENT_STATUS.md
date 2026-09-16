@@ -134,6 +134,9 @@ Section 2.2 is complete for the Level 1 Server baseline.
 Completed and CI validated:
 
 - 2.3.1
+- 2.3.2
+
+CIS 2.3.2 uses the exact OpenSCAP rule for remote chrony sources. Its remediation follows the ComplianceAsCode RHEL tailoring value for the four RHEL time pools.
 
 ## Known technical debt / mandatory pre-production review
 
