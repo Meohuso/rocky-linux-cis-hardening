@@ -127,6 +127,14 @@ Skipped:
 
 - 2.2.2 - Level 2 Server only for this project baseline.
 
+Section 2.2 is complete for the Level 1 Server baseline.
+
+### Section 2.3
+
+Completed and CI validated:
+
+- 2.3.1
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
