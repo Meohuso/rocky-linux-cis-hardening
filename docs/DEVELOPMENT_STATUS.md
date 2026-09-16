@@ -114,6 +114,12 @@ The next applicable benchmark item after that skip is 2.1.21. CIS 2.1.21 is impl
 
 CIS 2.1.22 is a manual Level 1 Server control. The framework inventories listening services for organizational approval review and intentionally performs no automatic service shutdown or removal.
 
+### Section 2.2
+
+Completed and CI validated:
+
+- 2.2.1
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
