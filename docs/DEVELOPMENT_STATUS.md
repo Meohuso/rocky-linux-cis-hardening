@@ -212,10 +212,13 @@ Completed and CI validated:
 
 - 3.3.1
 - 3.3.2
+- 3.3.3
 
 CIS 3.3.1 maps to separate ComplianceAsCode IPv4 and IPv6 forwarding rules plus an IPv6 tailoring value. Its metadata is therefore `manual`. Runtime and persistent values use a control-specific configuration file and rollback state so other sysctl controls cannot invalidate its rollback.
 
 CIS 3.3.2 maps to separate ComplianceAsCode rules for the IPv4 `all` and `default` packet redirect settings. Its metadata is therefore `manual`; runtime and persistent remediation and rollback remain isolated from CIS 3.3.1.
+
+CIS 3.3.3 uses the exact ComplianceAsCode rule for `net.ipv4.icmp_ignore_bogus_error_responses`. Its control-specific persistent file and rollback state preserve isolation from the other sysctl controls.
 
 ## Known technical debt / mandatory pre-production review
 
