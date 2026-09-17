@@ -179,6 +179,14 @@ CIS 2.4.2.1 maps to five ComplianceAsCode rules covering `at.deny` absence and `
 
 Section 2.4.2 is complete for the Level 1 Server baseline.
 
+### Section 3.1
+
+Completed and CI validated:
+
+- 3.1.1
+
+CIS 3.1.1 is an observation-only manual control with no ComplianceAsCode rule mapping. The module identifies and reports the IPv6 status without selecting or changing the organization's IPv6 policy.
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
