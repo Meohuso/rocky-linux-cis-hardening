@@ -219,6 +219,7 @@ Completed and CI validated:
 - 3.3.7
 - 3.3.8
 - 3.3.9
+- 3.3.10
 
 CIS 3.3.1 maps to separate ComplianceAsCode IPv4 and IPv6 forwarding rules plus an IPv6 tailoring value. Its metadata is therefore `manual`. Runtime and persistent values use a control-specific configuration file and rollback state so other sysctl controls cannot invalidate its rollback.
 
@@ -237,6 +238,8 @@ CIS 3.3.7 maps to separate ComplianceAsCode rules for IPv4 `all` and `default` r
 CIS 3.3.8 maps to four ComplianceAsCode rules for IPv4 and IPv6 source-route acceptance. Its metadata is therefore `manual`; required IPv6 parameters are not treated as not applicable merely because IPv6 is disabled.
 
 CIS 3.3.9 maps to separate ComplianceAsCode rules for IPv4 `all` and `default` martian-packet logging. Its metadata is therefore `manual`, with isolated persistent and rollback state.
+
+CIS 3.3.10 uses the exact ComplianceAsCode rule for `net.ipv4.tcp_syncookies`, with isolated persistent and rollback state.
 
 ## Known technical debt / mandatory pre-production review
 
