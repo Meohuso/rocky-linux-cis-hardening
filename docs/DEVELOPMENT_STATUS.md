@@ -185,10 +185,15 @@ Completed and CI validated:
 
 - 3.1.1
 - 3.1.2
+- 3.1.3
 
 CIS 3.1.1 is an observation-only manual control with no ComplianceAsCode rule mapping. The module identifies and reports the IPv6 status without selecting or changing the organization's IPv6 policy.
 
 CIS 3.1.2 uses the exact ComplianceAsCode wireless-interface rule. Systems without a physical Wi-Fi radio are reported as not applicable; remediation preserves the original Wi-Fi and WWAN radio states independently because the benchmark command disables all NetworkManager radios.
+
+CIS 3.1.3 uses the exact ComplianceAsCode Bluetooth service rule. The module stops, disables, and masks `bluetooth.service` only when the `bluez` package is installed, and preserves the original active, enablement, and masking states for isolated rollback.
+
+Section 3.1 is complete for the Level 1 Server baseline.
 
 ## Known technical debt / mandatory pre-production review
 
