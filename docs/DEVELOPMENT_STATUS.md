@@ -195,6 +195,12 @@ CIS 3.1.3 uses the exact ComplianceAsCode Bluetooth service rule. The module sto
 
 Section 3.1 is complete for the Level 1 Server baseline.
 
+### Section 3.2
+
+Skipped:
+
+- 3.2.1 - DCCP kernel module availability is a Level 2 Server control and is outside this project's Level 1 Server baseline.
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
