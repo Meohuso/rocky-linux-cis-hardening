@@ -206,6 +206,14 @@ Skipped:
 
 Section 3.2 is complete for the Level 1 Server baseline. All controls in this section are Level 2 Server only; no Level 1 remediation modules were created.
 
+### Section 3.3
+
+Completed and CI validated:
+
+- 3.3.1
+
+CIS 3.3.1 maps to separate ComplianceAsCode IPv4 and IPv6 forwarding rules plus an IPv6 tailoring value. Its metadata is therefore `manual`. Runtime and persistent values use a control-specific configuration file and rollback state so other sysctl controls cannot invalidate its rollback.
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
