@@ -74,7 +74,7 @@ create_compliant_allow_file() {
     [ "${status}" -eq "${RLCH_MODULE_RESULT_CHANGED}" ]
     [ ! -e "${RLCH_CIS_2_4_1_8_DENY_FILE}" ]
     [ -f "${RLCH_CIS_2_4_1_8_ALLOW_FILE}" ]
-    [ "$(stat -c '%u:%g:%a' "${RLCH_CIS_2_4_1_8_ALLOW_FILE}")" = "0:0:640" ]
+    [ "$(stat -c '%u' "${RLCH_CIS_2_4_1_8_ALLOW_FILE}"):$(stat -c '%g' "${RLCH_CIS_2_4_1_8_ALLOW_FILE}"):$(stat -c '%a' "${RLCH_CIS_2_4_1_8_ALLOW_FILE}")" = "0:0:640" ]
 }
 
 @test "apply preserves existing cron.allow content" {
