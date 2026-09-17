@@ -211,8 +211,11 @@ Section 3.2 is complete for the Level 1 Server baseline. All controls in this se
 Completed and CI validated:
 
 - 3.3.1
+- 3.3.2
 
 CIS 3.3.1 maps to separate ComplianceAsCode IPv4 and IPv6 forwarding rules plus an IPv6 tailoring value. Its metadata is therefore `manual`. Runtime and persistent values use a control-specific configuration file and rollback state so other sysctl controls cannot invalidate its rollback.
+
+CIS 3.3.2 maps to separate ComplianceAsCode rules for the IPv4 `all` and `default` packet redirect settings. Its metadata is therefore `manual`; runtime and persistent remediation and rollback remain isolated from CIS 3.3.1.
 
 ## Known technical debt / mandatory pre-production review
 
