@@ -12,6 +12,7 @@ sysctl_control_helper_setup() {
     : > "${RLCH_TEST_SYSCTL_CONTROL_RUNTIME}"
     export RLCH_SYSCTL_CONTROL_SYSCTL_COMMAND="${RLCH_TEST_SYSCTL_CONTROL_BIN}/sysctl"
     export RLCH_SYSCTL_CONTROL_ID_COMMAND="${RLCH_TEST_SYSCTL_CONTROL_BIN}/id"
+    export RLCH_SYSCTL_CONTROL_CHOWN_COMMAND="${RLCH_TEST_SYSCTL_CONTROL_BIN}/chown"
     sysctl_control_helper_write_commands
 }
 
@@ -46,7 +47,12 @@ if [[ "${1:-}" == -w ]]; then
 fi
 exit 1
 EOF
-    chmod +x "${RLCH_TEST_SYSCTL_CONTROL_BIN}/id" "${RLCH_TEST_SYSCTL_CONTROL_BIN}/sysctl"
+
+    cat > "${RLCH_TEST_SYSCTL_CONTROL_BIN}/chown" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "${RLCH_TEST_SYSCTL_CONTROL_BIN}/id" "${RLCH_TEST_SYSCTL_CONTROL_BIN}/sysctl" "${RLCH_TEST_SYSCTL_CONTROL_BIN}/chown"
 }
 
 sysctl_control_helper_set_runtime() {

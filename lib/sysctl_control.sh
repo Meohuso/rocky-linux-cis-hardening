@@ -12,6 +12,7 @@ readonly RLCH_SYSCTL_CONTROL_LOADED=1
 
 RLCH_SYSCTL_CONTROL_SYSCTL_COMMAND="${RLCH_SYSCTL_CONTROL_SYSCTL_COMMAND:-sysctl}"
 RLCH_SYSCTL_CONTROL_ID_COMMAND="${RLCH_SYSCTL_CONTROL_ID_COMMAND:-id}"
+RLCH_SYSCTL_CONTROL_CHOWN_COMMAND="${RLCH_SYSCTL_CONTROL_CHOWN_COMMAND:-chown}"
 
 sysctl_control_validate_arrays() {
     local parameters_name="${1:-}"
@@ -212,7 +213,8 @@ sysctl_control_write_config() {
             return 1
         fi
     done
-    if ! chmod 0644 -- "${temporary_file}" || ! chown 0:0 -- "${temporary_file}" ||
+    if ! chmod 0644 -- "${temporary_file}" ||
+       ! "${RLCH_SYSCTL_CONTROL_CHOWN_COMMAND}" 0:0 -- "${temporary_file}" ||
        ! mv -f -- "${temporary_file}" "${config_file}"; then
         rm -f -- "${temporary_file}"
         return 1
