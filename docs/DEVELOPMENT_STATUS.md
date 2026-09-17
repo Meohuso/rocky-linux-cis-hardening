@@ -216,6 +216,7 @@ Completed and CI validated:
 - 3.3.4
 - 3.3.5
 - 3.3.6
+- 3.3.7
 
 CIS 3.3.1 maps to separate ComplianceAsCode IPv4 and IPv6 forwarding rules plus an IPv6 tailoring value. Its metadata is therefore `manual`. Runtime and persistent values use a control-specific configuration file and rollback state so other sysctl controls cannot invalidate its rollback.
 
@@ -228,6 +229,8 @@ CIS 3.3.4 uses the exact ComplianceAsCode rule for `net.ipv4.icmp_echo_ignore_br
 CIS 3.3.5 maps to four ComplianceAsCode rules for IPv4 and IPv6 `accept_redirects` settings. Its metadata is therefore `manual`. IPv6 settings remain required by the benchmark even when IPv6 is disabled; a missing expected parameter is reported as an error rather than not applicable.
 
 CIS 3.3.6 maps to separate ComplianceAsCode rules for IPv4 `all` and `default` secure redirects. Its metadata is therefore `manual`, with control-specific persistent and rollback state.
+
+CIS 3.3.7 maps to separate ComplianceAsCode rules for IPv4 `all` and `default` reverse path filtering, both tailored to the strict value `1`. Its metadata is therefore `manual`.
 
 ## Known technical debt / mandatory pre-production review
 
