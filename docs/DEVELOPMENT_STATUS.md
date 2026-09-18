@@ -251,8 +251,13 @@ Section 3.3 is complete for the Level 1 Server baseline. All controls in this se
 Completed and CI validated:
 
 - 4.1.1
+- 4.1.2
 
 CIS 4.1.1 uses the exact ComplianceAsCode `package_nftables_installed` rule. It installs only the nftables package required by the firewalld backend and does not enable or start the standalone nftables service. Rollback removes the package only when this control installed it.
+
+CIS 4.1.2 maps to the ComplianceAsCode firewalld package-installation and service-enablement rules plus the nftables service-disablement rule. Its metadata is therefore `manual`. Remediation selects firewalld as the sole management utility without configuring the standalone nftables service, and rollback preserves the original package, enablement, masking, and runtime states in control-specific storage.
+
+Section 4.1 is complete for the Level 1 Server baseline. Both controls are applicable; none are skipped.
 
 ## Known technical debt / mandatory pre-production review
 
