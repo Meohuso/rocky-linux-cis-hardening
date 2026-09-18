@@ -246,6 +246,14 @@ CIS 3.3.11 maps to separate ComplianceAsCode rules for IPv6 `all` and `default` 
 
 Section 3.3 is complete for the Level 1 Server baseline. All controls in this section are applicable; none are skipped.
 
+### Section 4.1
+
+Completed and CI validated:
+
+- 4.1.1
+
+CIS 4.1.1 uses the exact ComplianceAsCode `package_nftables_installed` rule. It installs only the nftables package required by the firewalld backend and does not enable or start the standalone nftables service. Rollback removes the package only when this control installed it.
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
