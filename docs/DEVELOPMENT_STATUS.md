@@ -259,6 +259,16 @@ CIS 4.1.2 maps to the ComplianceAsCode firewalld package-installation and servic
 
 Section 4.1 is complete for the Level 1 Server baseline. Both controls are applicable; none are skipped.
 
+### Section 4.2
+
+Implemented with local validation complete:
+
+- 4.2.1
+
+CIS 4.2.1 is a manual Level 1 Server control related to the ComplianceAsCode `configure_firewalld_ports` rule. The required services and ports depend on the approved role-specific firewall baseline, so the framework reports the current `firewall-cmd --list-all` inventory for manual comparison and deliberately performs no automatic port or service changes. The control is observation-only and therefore has no rollback state.
+
+GitHub Actions validation for CIS 4.2.1 is required before development proceeds to CIS 4.2.2.
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
