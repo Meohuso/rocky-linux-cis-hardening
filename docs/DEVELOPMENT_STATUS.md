@@ -264,16 +264,23 @@ Section 4.1 is complete for the Level 1 Server baseline. Both controls are appli
 Completed and CI validated:
 
 - 4.2.1
-
-Implemented with local validation complete:
-
 - 4.2.2
 
 CIS 4.2.1 is a manual Level 1 Server control related to the ComplianceAsCode `configure_firewalld_ports` rule. The required services and ports depend on the approved role-specific firewall baseline, so the framework reports the current `firewall-cmd --list-all` inventory for manual comparison and deliberately performs no automatic port or service changes. The control is observation-only and therefore has no rollback state.
 
 CIS 4.2.2 maps to separate ComplianceAsCode rules for trusting the loopback interface and restricting spoofed IPv4 and IPv6 loopback-source traffic. Its metadata is therefore `manual`. Remediation uses firewalld exclusively and preserves the exact pre-existing permanent and runtime state of each loopback element in control-specific rollback storage. IPv6 protection remains required even when NetworkManager does not use IPv6.
 
-GitHub Actions validation for CIS 4.2.2 is required before Section 4.2 is declared complete. No CIS 4.3 work has been started.
+Section 4.2 is complete for the Level 1 Server baseline. Both controls are applicable; none are skipped or runtime not applicable.
+
+### Section 4.3
+
+Implemented with local validation complete:
+
+- 4.3.1
+
+CIS 4.3.1 is a supported Level 1 Server control related to `set_nftables_base_chain` and its firewalld tailoring variables. Because RHEL/Rocky uses firewalld as the sole firewall manager, the module verifies in read-only mode that active firewalld generated `input`, `forward`, and `output` filter base-chain hooks in the `inet firewalld` nftables table. It does not depend on firewalld's internal chain names, does not create nftables chains, and has no rollback state. Metadata is `manual` because the benchmark uses an indirect related rule plus multiple tailoring variables.
+
+GitHub Actions validation for CIS 4.3.1 is required before development proceeds to CIS 4.3.2.
 
 ## Known technical debt / mandatory pre-production review
 
