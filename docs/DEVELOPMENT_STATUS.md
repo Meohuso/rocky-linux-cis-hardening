@@ -274,13 +274,19 @@ Section 4.2 is complete for the Level 1 Server baseline. Both controls are appli
 
 ### Section 4.3
 
-Implemented with local validation complete:
+Completed and CI validated:
 
 - 4.3.1
 
+Implemented with local validation complete:
+
+- 4.3.2
+
 CIS 4.3.1 is a supported Level 1 Server control related to `set_nftables_base_chain` and its firewalld tailoring variables. Because RHEL/Rocky uses firewalld as the sole firewall manager, the module verifies in read-only mode that active firewalld generated `input`, `forward`, and `output` filter base-chain hooks in the `inet firewalld` nftables table. It does not depend on firewalld's internal chain names, does not create nftables chains, and has no rollback state. Metadata is `manual` because the benchmark uses an indirect related rule plus multiple tailoring variables.
 
-GitHub Actions validation for CIS 4.3.1 is required before development proceeds to CIS 4.3.2.
+CIS 4.3.2 is a manual Level 1 Server control with no ComplianceAsCode rule mapping. The observation-only module verifies that the active firewalld-generated nftables table contains a stateful accept rule covering both `established` and `related` connections. It does not require or create role-specific `new` connection rules, does not modify nftables, and has no rollback state.
+
+GitHub Actions validation for CIS 4.3.2 is required before development proceeds to CIS 4.3.3.
 
 ## Known technical debt / mandatory pre-production review
 
