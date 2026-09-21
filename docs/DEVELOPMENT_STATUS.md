@@ -299,10 +299,11 @@ Completed and CI validated:
 - 5.1.2
 - 5.1.3
 - 5.1.4
+- 5.1.5
 
 Implemented with local validation complete:
 
-- 5.1.5
+- 5.1.6
 
 CIS 5.1.1 is an automated Level 1 Server control mapped to three ComplianceAsCode rules for owner, group owner, and permissions on `/etc/ssh/sshd_config`. Metadata is `manual` because the project schema stores only one rule. Remediation changes only numeric ownership and mode, preserves the exact original UID, GID, and mode in control-specific rollback state, and never modifies file content.
 
@@ -314,7 +315,9 @@ CIS 5.1.4 is an automated Level 1 Server control using the exact ComplianceAsCod
 
 CIS 5.1.5 is an automated Level 1 Server control using the exact ComplianceAsCode `configure_custom_crypto_policy_cis` rule. It validates that the effective system-wide SSH hash policy excludes SHA-1 and adds the benchmark `NO-SHA1` subpolicy only when necessary. It does not write a conflicting `KexAlgorithms` directive, and its rollback policy state is isolated from the other crypto controls.
 
-GitHub Actions validation for CIS 5.1.5 is required before development proceeds to CIS 5.1.6.
+CIS 5.1.6 is an automated Level 1 Server control using the exact ComplianceAsCode `configure_custom_crypto_policy_cis` rule. It validates the generated SSH MAC policy and installs the RHEL 9 `NO-SSHWEAKMACS` subpolicy only when needed, without writing a conflicting `MACs` directive. Its crypto-policy backup and module state are isolated to this control.
+
+GitHub Actions validation for CIS 5.1.6 is required before development proceeds to CIS 5.1.7.
 
 ## Known technical debt / mandatory pre-production review
 
