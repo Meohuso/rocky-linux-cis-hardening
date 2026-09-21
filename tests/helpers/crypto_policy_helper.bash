@@ -40,10 +40,17 @@ case "${1:-}" in
     --set)
         [[ -n "${2:-}" ]] || exit 1
         printf '%s\n' "${2}" > "${RLCH_TEST_CRYPTO_POLICY_RUNTIME_STATE}"
-        if [[ ":${2}:" == *":NO-SHA1:"* ]]; then
-            printf '%s\n' 'hash = SHA2-256 SHA2-384 SHA2-512' 'sign = RSA-SHA2-256 RSA-SHA2-384 RSA-SHA2-512' 'sha1_in_certs = 0' > "${RLCH_TEST_CRYPTO_POLICY_CURRENT_FILE}"
+        if [[ ":${2}:" == *":NO-SSHWEAKCIPHERS:"* ]]; then
+            printf '%s\n' 'cipher@SSH = AES-256-GCM AES-128-GCM AES-256-CTR AES-128-CTR' > "${RLCH_TEST_CRYPTO_POLICY_CURRENT_FILE}"
+        elif [[ -n "${RLCH_TEST_CRYPTO_POLICY_CIPHERS:-}" ]]; then
+            printf 'cipher@SSH = %s\n' "${RLCH_TEST_CRYPTO_POLICY_CIPHERS}" > "${RLCH_TEST_CRYPTO_POLICY_CURRENT_FILE}"
         else
-            printf '%s\n' 'hash = SHA1 SHA2-256 SHA2-384 SHA2-512' 'sign = RSA-SHA1 RSA-SHA2-256 RSA-SHA2-384 RSA-SHA2-512' 'sha1_in_certs = 1' > "${RLCH_TEST_CRYPTO_POLICY_CURRENT_FILE}"
+            : > "${RLCH_TEST_CRYPTO_POLICY_CURRENT_FILE}"
+        fi
+        if [[ ":${2}:" == *":NO-SHA1:"* ]]; then
+            printf '%s\n' 'hash = SHA2-256 SHA2-384 SHA2-512' 'sign = RSA-SHA2-256 RSA-SHA2-384 RSA-SHA2-512' 'sha1_in_certs = 0' >> "${RLCH_TEST_CRYPTO_POLICY_CURRENT_FILE}"
+        else
+            printf '%s\n' 'hash = SHA1 SHA2-256 SHA2-384 SHA2-512' 'sign = RSA-SHA1 RSA-SHA2-256 RSA-SHA2-384 RSA-SHA2-512' 'sha1_in_certs = 1' >> "${RLCH_TEST_CRYPTO_POLICY_CURRENT_FILE}"
         fi
         ;;
     *) exit 1 ;;
@@ -52,6 +59,7 @@ SCRIPT
 
     chmod +x "${RLCH_TEST_CRYPTO_POLICY_BIN}/id" "${RLCH_TEST_CRYPTO_POLICY_BIN}/chown" "${RLCH_TEST_CRYPTO_POLICY_BIN}/update-crypto-policies"
     export RLCH_TEST_CRYPTO_POLICY_EFFECTIVE_UID=0 RLCH_TEST_CRYPTO_POLICY_RUNTIME_STATE RLCH_TEST_CRYPTO_POLICY_CURRENT_FILE
+    unset RLCH_TEST_CRYPTO_POLICY_CIPHERS
     PATH="${RLCH_TEST_CRYPTO_POLICY_BIN}:${PATH}"
     export PATH
 
