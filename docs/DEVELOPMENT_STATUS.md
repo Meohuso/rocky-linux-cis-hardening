@@ -279,9 +279,6 @@ Completed and CI validated:
 - 4.3.1
 - 4.3.2
 - 4.3.3
-
-Implemented with local validation complete:
-
 - 4.3.4
 
 CIS 4.3.1 is a supported Level 1 Server control related to `set_nftables_base_chain` and its firewalld tailoring variables. Because RHEL/Rocky uses firewalld as the sole firewall manager, the module verifies in read-only mode that active firewalld generated `input`, `forward`, and `output` filter base-chain hooks in the `inet firewalld` nftables table. It does not depend on firewalld's internal chain names, does not create nftables chains, and has no rollback state. Metadata is `manual` because the benchmark uses an indirect related rule plus multiple tailoring variables.
@@ -292,7 +289,17 @@ CIS 4.3.3 is a supported Level 1 Server control related to `nftables_ensure_defa
 
 CIS 4.3.4 is a supported Level 1 Server control related to `set_nftables_loopback_traffic`. That related rule targets standalone nftables and explicitly excludes active firewalld, so metadata is `manual`. The observation-only implementation verifies active firewalld, its generated `inet firewalld` nftables table, and the permanent and runtime loopback trust plus IPv4 and IPv6 anti-spoofing rules managed by CIS 4.2.2. It does not write direct nftables rules and has no rollback state.
 
-GitHub Actions validation for CIS 4.3.4 is required before CIS 4.3 is complete. Development must stop before CIS 5.1.1.
+Section 4.3 is complete for the Level 1 Server baseline. All four controls are applicable and CI validated; none are skipped or runtime not applicable.
+
+### Section 5.1
+
+Implemented with local validation complete:
+
+- 5.1.1
+
+CIS 5.1.1 is an automated Level 1 Server control mapped to three ComplianceAsCode rules for owner, group owner, and permissions on `/etc/ssh/sshd_config`. Metadata is `manual` because the project schema stores only one rule. Remediation changes only numeric ownership and mode, preserves the exact original UID, GID, and mode in control-specific rollback state, and never modifies file content.
+
+GitHub Actions validation for CIS 5.1.1 is required before development proceeds to CIS 5.1.2.
 
 ## Known technical debt / mandatory pre-production review
 
