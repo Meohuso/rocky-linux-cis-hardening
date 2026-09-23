@@ -303,10 +303,16 @@ Completed and CI validated:
 - 5.1.6
 - 5.1.7
 - 5.1.8
+- 5.1.9
 
 Implemented with local validation complete:
 
-- 5.1.9
+- 5.1.12
+
+Skipped for the Level 1 Server baseline:
+
+- 5.1.10 (Level 2 Server only)
+- 5.1.11 (Level 2 Server only)
 
 CIS 5.1.1 is an automated Level 1 Server control mapped to three ComplianceAsCode rules for owner, group owner, and permissions on `/etc/ssh/sshd_config`. Metadata is `manual` because the project schema stores only one rule. Remediation changes only numeric ownership and mode, preserves the exact original UID, GID, and mode in control-specific rollback state, and never modifies file content.
 
@@ -326,7 +332,11 @@ CIS 5.1.8 is an automated Level 1 Server control using the exact primary Complia
 
 CIS 5.1.9 is an automated Level 1 Server control mapped to the separate ComplianceAsCode `sshd_set_idle_timeout` and `sshd_set_keepalive` rules plus their tailoring values (`300` seconds and `1`). Metadata is therefore `manual`. Both effective settings are validated and managed together in one control-specific drop-in with isolated rollback state.
 
-GitHub Actions validation for CIS 5.1.9 is required before the Level 2 Server-only CIS 5.1.10 and CIS 5.1.11 skips are recorded and development proceeds to CIS 5.1.12.
+CIS 5.1.10 and CIS 5.1.11 are excluded from the Level 1 Server profile by the benchmark; both are Level 2 Server controls and are documented only as `SKIPPED`, with no module or remediation.
+
+CIS 5.1.12 is an automated Level 1 Server control using the exact ComplianceAsCode `disable_host_auth` rule. It validates the effective `HostbasedAuthentication no` setting and manages only a control-specific sshd drop-in with isolated rollback state.
+
+GitHub Actions validation for CIS 5.1.12 is required before development proceeds to CIS 5.1.13.
 
 ## Known technical debt / mandatory pre-production review
 
