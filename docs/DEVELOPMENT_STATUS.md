@@ -312,10 +312,11 @@ Completed and CI validated:
 - 5.1.17
 - 5.1.18
 - 5.1.19
+- 5.1.20
 
 Implemented with local validation complete:
 
-- 5.1.20
+- 5.1.21
 
 Skipped for the Level 1 Server baseline:
 
@@ -360,7 +361,9 @@ CIS 5.1.19 is an automated Level 1 Server control using the exact ComplianceAsCo
 
 CIS 5.1.20 is an automated Level 1 Server control using the exact ComplianceAsCode `sshd_disable_root_login` rule. It enforces `PermitRootLogin no` without modifying SSH access allow/deny policy, using isolated rollback state.
 
-GitHub Actions validation for CIS 5.1.20 is required before development proceeds to CIS 5.1.21.
+CIS 5.1.21 is an automated Level 1 Server control using the exact ComplianceAsCode `sshd_do_not_permit_user_env` rule. It enforces `PermitUserEnvironment no` in its own drop-in and preserves an exact, isolated rollback state.
+
+GitHub Actions validation for CIS 5.1.21 is required before development proceeds to CIS 5.1.22.
 
 ## Known technical debt / mandatory pre-production review
 
