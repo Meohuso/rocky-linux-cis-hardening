@@ -43,11 +43,18 @@ sshd_validate_configuration() {
 }
 
 sshd_write_dropin() {
-    local file="${1:-}" state_file="${2:-}" directive="${3:-}" value="${4:-}"
-    local backup directory state_directory temporary
+    local file="${1:-}" state_file="${2:-}"
+    local backup directory index state_directory temporary
+    local -a settings=("${@:3}")
 
-    [[ -n "${file}" && -n "${state_file}" && "${directive}" =~ ^[A-Za-z][A-Za-z0-9]*$ && -n "${value}" ]] ||
+    [[ -n "${file}" && -n "${state_file}" && "${#settings[@]}" -ge 2 &&
+       $(( ${#settings[@]} % 2 )) -eq 0 ]] ||
         return "${RLCH_MODULE_RESULT_ERROR}"
+    for ((index = 0; index < ${#settings[@]}; index += 2)); do
+        [[ "${settings[index]}" =~ ^[A-Za-z][A-Za-z0-9]*$ &&
+           -n "${settings[index + 1]}" && "${settings[index + 1]}" != *$'\n'* ]] ||
+            return "${RLCH_MODULE_RESULT_ERROR}"
+    done
     sshd_require_root || return "${RLCH_MODULE_RESULT_ERROR}"
     directory="$(dirname -- "${file}")"
     state_directory="$(dirname -- "${state_file}")"
@@ -65,8 +72,17 @@ sshd_write_dropin() {
     fi
     mkdir -p -- "${directory}" || return "${RLCH_MODULE_RESULT_ERROR}"
     temporary="$(mktemp "${directory}/.rlch-sshd.XXXXXX")" || return "${RLCH_MODULE_RESULT_ERROR}"
-    if ! printf '%s %s\n' "${directive}" "${value}" > "${temporary}" ||
-       ! chmod 0600 -- "${temporary}" || ! chown 0:0 -- "${temporary}" ||
+    if ! : > "${temporary}"; then
+        rm -f -- "${temporary}"
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+    for ((index = 0; index < ${#settings[@]}; index += 2)); do
+        if ! printf '%s %s\n' "${settings[index]}" "${settings[index + 1]}" >> "${temporary}"; then
+            rm -f -- "${temporary}"
+            return "${RLCH_MODULE_RESULT_ERROR}"
+        fi
+    done
+    if ! chmod 0600 -- "${temporary}" || ! chown 0:0 -- "${temporary}" ||
        ! mv -f -- "${temporary}" "${file}"; then
         rm -f -- "${temporary}"
         return "${RLCH_MODULE_RESULT_ERROR}"

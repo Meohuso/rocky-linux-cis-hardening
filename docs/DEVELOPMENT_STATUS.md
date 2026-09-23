@@ -302,10 +302,11 @@ Completed and CI validated:
 - 5.1.5
 - 5.1.6
 - 5.1.7
+- 5.1.8
 
 Implemented with local validation complete:
 
-- 5.1.8
+- 5.1.9
 
 CIS 5.1.1 is an automated Level 1 Server control mapped to three ComplianceAsCode rules for owner, group owner, and permissions on `/etc/ssh/sshd_config`. Metadata is `manual` because the project schema stores only one rule. Remediation changes only numeric ownership and mode, preserves the exact original UID, GID, and mode in control-specific rollback state, and never modifies file content.
 
@@ -323,7 +324,9 @@ CIS 5.1.7 is an automated Level 1 Server check using the exact ComplianceAsCode 
 
 CIS 5.1.8 is an automated Level 1 Server control using the exact primary ComplianceAsCode `sshd_enable_warning_banner_net` rule. It verifies the effective sshd `Banner` value and manages only a control-specific drop-in pointing to `/etc/issue.net`; the banner content remains owned by CIS 1.7.3. Rollback restores or removes only this control's drop-in.
 
-GitHub Actions validation for CIS 5.1.8 is required before development proceeds to CIS 5.1.9.
+CIS 5.1.9 is an automated Level 1 Server control mapped to the separate ComplianceAsCode `sshd_set_idle_timeout` and `sshd_set_keepalive` rules plus their tailoring values (`300` seconds and `1`). Metadata is therefore `manual`. Both effective settings are validated and managed together in one control-specific drop-in with isolated rollback state.
+
+GitHub Actions validation for CIS 5.1.9 is required before the Level 2 Server-only CIS 5.1.10 and CIS 5.1.11 skips are recorded and development proceeds to CIS 5.1.12.
 
 ## Known technical debt / mandatory pre-production review
 

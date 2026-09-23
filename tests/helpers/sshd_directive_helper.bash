@@ -15,7 +15,7 @@ if [[ "$1" == -t ]]; then [[ "${RLCH_TEST_SSHD_FAIL}" != validate ]] || exit 1; 
 if [[ -s "${RLCH_TEST_SSHD_EFFECTIVE}" ]]; then cat "${RLCH_TEST_SSHD_EFFECTIVE}"; exit 0; fi
 for file in "${RLCH_TEST_SSHD_ROOT}/etc/ssh/sshd_config.d/"*.conf; do
     [[ -f "$file" ]] || continue
-    awk 'NF && $1 !~ /^#/ { print tolower($1), $2; exit }' "$file"
+    awk 'NF && $1 !~ /^#/ { print tolower($1), $2 }' "$file"
 done
 SCRIPT
     cat > "${RLCH_TEST_SSHD_BIN}/id" <<'SCRIPT'
