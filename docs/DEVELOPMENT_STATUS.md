@@ -307,10 +307,11 @@ Completed and CI validated:
 - 5.1.12
 - 5.1.13
 - 5.1.14
+- 5.1.15
 
 Implemented with local validation complete:
 
-- 5.1.15
+- 5.1.16
 
 Skipped for the Level 1 Server baseline:
 
@@ -345,7 +346,9 @@ CIS 5.1.14 is an automated Level 1 Server control mapped to ComplianceAsCode `ss
 
 CIS 5.1.15 is an automated Level 1 Server control using the exact ComplianceAsCode `sshd_set_loglevel_verbose` rule. It validates the effective `LogLevel VERBOSE` value and manages only its control-specific drop-in and rollback state.
 
-GitHub Actions validation for CIS 5.1.15 is required before development proceeds to CIS 5.1.16.
+CIS 5.1.16 is an automated Level 1 Server control mapped to ComplianceAsCode `sshd_set_max_auth_tries` and the tailored value `4`. Metadata is `manual` because the project schema cannot encode both. Its drop-in and rollback state are isolated.
+
+GitHub Actions validation for CIS 5.1.16 is required before development proceeds to CIS 5.1.17.
 
 ## Known technical debt / mandatory pre-production review
 
