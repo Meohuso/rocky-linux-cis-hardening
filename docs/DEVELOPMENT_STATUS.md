@@ -304,10 +304,11 @@ Completed and CI validated:
 - 5.1.7
 - 5.1.8
 - 5.1.9
+- 5.1.12
 
 Implemented with local validation complete:
 
-- 5.1.12
+- 5.1.13
 
 Skipped for the Level 1 Server baseline:
 
@@ -336,7 +337,9 @@ CIS 5.1.10 and CIS 5.1.11 are excluded from the Level 1 Server profile by the be
 
 CIS 5.1.12 is an automated Level 1 Server control using the exact ComplianceAsCode `disable_host_auth` rule. It validates the effective `HostbasedAuthentication no` setting and manages only a control-specific sshd drop-in with isolated rollback state.
 
-GitHub Actions validation for CIS 5.1.12 is required before development proceeds to CIS 5.1.13.
+CIS 5.1.13 is an automated Level 1 Server control using the exact ComplianceAsCode `sshd_disable_rhosts` rule. It validates `IgnoreRhosts yes` and manages only its own sshd drop-in and rollback state.
+
+GitHub Actions validation for CIS 5.1.13 is required before development proceeds to CIS 5.1.14.
 
 ## Known technical debt / mandatory pre-production review
 
