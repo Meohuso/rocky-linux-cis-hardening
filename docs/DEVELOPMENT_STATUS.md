@@ -305,10 +305,11 @@ Completed and CI validated:
 - 5.1.8
 - 5.1.9
 - 5.1.12
+- 5.1.13
 
 Implemented with local validation complete:
 
-- 5.1.13
+- 5.1.14
 
 Skipped for the Level 1 Server baseline:
 
@@ -339,7 +340,9 @@ CIS 5.1.12 is an automated Level 1 Server control using the exact ComplianceAsCo
 
 CIS 5.1.13 is an automated Level 1 Server control using the exact ComplianceAsCode `sshd_disable_rhosts` rule. It validates `IgnoreRhosts yes` and manages only its own sshd drop-in and rollback state.
 
-GitHub Actions validation for CIS 5.1.13 is required before development proceeds to CIS 5.1.14.
+CIS 5.1.14 is an automated Level 1 Server control mapped to ComplianceAsCode `sshd_set_login_grace_time` and its tailored value of 60 seconds. Metadata is `manual` because the project schema cannot encode both the rule and variable. The module manages only `LoginGraceTime 60` in isolated state.
+
+GitHub Actions validation for CIS 5.1.14 is required before development proceeds to CIS 5.1.15.
 
 ## Known technical debt / mandatory pre-production review
 
