@@ -311,10 +311,11 @@ Completed and CI validated:
 - 5.1.16
 - 5.1.17
 - 5.1.18
+- 5.1.19
 
 Implemented with local validation complete:
 
-- 5.1.19
+- 5.1.20
 
 Skipped for the Level 1 Server baseline:
 
@@ -357,7 +358,9 @@ CIS 5.1.18 is an automated Level 1 Server control mapped to ComplianceAsCode `ss
 
 CIS 5.1.19 is an automated Level 1 Server control using the exact ComplianceAsCode `sshd_disable_empty_passwords` rule. It enforces `PermitEmptyPasswords no` in an isolated drop-in with exact rollback.
 
-GitHub Actions validation for CIS 5.1.19 is required before development proceeds to CIS 5.1.20.
+CIS 5.1.20 is an automated Level 1 Server control using the exact ComplianceAsCode `sshd_disable_root_login` rule. It enforces `PermitRootLogin no` without modifying SSH access allow/deny policy, using isolated rollback state.
+
+GitHub Actions validation for CIS 5.1.20 is required before development proceeds to CIS 5.1.21.
 
 ## Known technical debt / mandatory pre-production review
 
