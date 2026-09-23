@@ -310,10 +310,11 @@ Completed and CI validated:
 - 5.1.15
 - 5.1.16
 - 5.1.17
+- 5.1.18
 
 Implemented with local validation complete:
 
-- 5.1.18
+- 5.1.19
 
 Skipped for the Level 1 Server baseline:
 
@@ -354,7 +355,9 @@ CIS 5.1.17 is an automated Level 1 Server control mapped to ComplianceAsCode `ss
 
 CIS 5.1.18 is an automated Level 1 Server control mapped to ComplianceAsCode `sshd_set_max_sessions` and the tailored value `10`. Metadata is `manual`; the isolated drop-in changes no other SSH limit.
 
-GitHub Actions validation for CIS 5.1.18 is required before development proceeds to CIS 5.1.19.
+CIS 5.1.19 is an automated Level 1 Server control using the exact ComplianceAsCode `sshd_disable_empty_passwords` rule. It enforces `PermitEmptyPasswords no` in an isolated drop-in with exact rollback.
+
+GitHub Actions validation for CIS 5.1.19 is required before development proceeds to CIS 5.1.20.
 
 ## Known technical debt / mandatory pre-production review
 
