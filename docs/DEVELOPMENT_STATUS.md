@@ -313,10 +313,11 @@ Completed and CI validated:
 - 5.1.18
 - 5.1.19
 - 5.1.20
+- 5.1.21
 
 Implemented with local validation complete:
 
-- 5.1.21
+- 5.1.22
 
 Skipped for the Level 1 Server baseline:
 
@@ -363,7 +364,9 @@ CIS 5.1.20 is an automated Level 1 Server control using the exact ComplianceAsCo
 
 CIS 5.1.21 is an automated Level 1 Server control using the exact ComplianceAsCode `sshd_do_not_permit_user_env` rule. It enforces `PermitUserEnvironment no` in its own drop-in and preserves an exact, isolated rollback state.
 
-GitHub Actions validation for CIS 5.1.21 is required before development proceeds to CIS 5.1.22.
+CIS 5.1.22 is an automated Level 1 Server control using the exact ComplianceAsCode `sshd_enable_pam` rule. It enforces `UsePAM yes` in a control-specific drop-in with exact rollback.
+
+GitHub Actions validation for CIS 5.1.22 is required to complete section 5.1. No work on CIS 5.2 has started.
 
 ## Known technical debt / mandatory pre-production review
 
