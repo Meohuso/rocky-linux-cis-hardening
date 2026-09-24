@@ -373,10 +373,15 @@ Completed and CI validated:
 
 - 5.2.1
 - 5.2.2
+- 5.2.3
 
 Implemented with local validation complete:
 
-- 5.2.3
+- 5.2.5
+
+Skipped for the Level 1 Server baseline:
+
+- 5.2.4 (Level 2 Server only)
 
 CIS 5.2.1 is an automated Level 1 Server control using the exact ComplianceAsCode `package_sudo_installed` rule. It installs the `sudo` package only when absent, records control-specific rollback state before installation, and removes sudo during rollback only when this control installed it.
 
@@ -384,7 +389,11 @@ CIS 5.2.2 is an automated Level 1 Server control using the exact ComplianceAsCod
 
 CIS 5.2.3 is an automated Level 1 Server control using the exact ComplianceAsCode `sudo_custom_logfile` rule and its default `/var/log/sudo.log` value. It configures only the sudoers `logfile` option; it does not create an empty log file because the rule validates configuration and sudo creates the file when it writes. The dedicated drop-in is validated by `visudo` and has isolated exact rollback state.
 
-GitHub Actions validation for CIS 5.2.3 is required before the Level 2 Server-only CIS 5.2.4 skip is recorded and development proceeds to CIS 5.2.5.
+CIS 5.2.4 is `SKIPPED` because the benchmark classifies `sudo_remove_nopasswd` as Level 2 Server only. No module is created and Level 1 remediation does not remove approved `NOPASSWD` policy.
+
+CIS 5.2.5 is an automated Level 1 Server control using the exact ComplianceAsCode `sudo_remove_no_authenticate` rule. Because that rule disallows every active `!authenticate` occurrence, remediation removes only that option from affected global or scoped Defaults directives, preserves all other options and comments, validates with `visudo`, and records exact per-file backups in isolated state. Ambiguous continued directives are rejected rather than rewritten destructively.
+
+GitHub Actions validation for CIS 5.2.5 is required before development proceeds to CIS 5.2.6.
 
 ## Known technical debt / mandatory pre-production review
 

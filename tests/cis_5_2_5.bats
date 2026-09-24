@@ -1,0 +1,22 @@
+#!/usr/bin/env bats
+setup() {
+ export RLCH_TEST_REPOSITORY_ROOT="${BATS_TEST_DIRNAME}/.."; source "${RLCH_TEST_REPOSITORY_ROOT}/tests/test_helper.bash"; source "${RLCH_TEST_REPOSITORY_ROOT}/lib/module_api.sh"
+ source "${RLCH_TEST_REPOSITORY_ROOT}/tests/helpers/sudoers_helper.bash"; sudoers_helper_setup; source "${RLCH_TEST_REPOSITORY_ROOT}/lib/sudoers.sh"
+ export RLCH_CIS_5_2_5_STATE_DIR="${RLCH_TEST_SUDOERS_ROOT}/state/5.2.5" RLCH_CIS_5_2_5_MANIFEST="${RLCH_TEST_SUDOERS_ROOT}/state/5.2.5/manifest"
+ source "${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/5/2/5/module.sh"
+}
+@test "check accepts policy without !authenticate" { printf 'Defaults authenticate\n' >> "$RLCH_SUDOERS_MAIN_FILE"; run check; [ "$status" -eq "$RLCH_MODULE_RESULT_SUCCESS" ]; }
+@test "check ignores comments" { printf '# Defaults !authenticate\n' >> "$RLCH_SUDOERS_MAIN_FILE"; run check; [ "$status" -eq "$RLCH_MODULE_RESULT_SUCCESS" ]; }
+@test "check rejects global !authenticate" { printf 'Defaults !authenticate\n' >> "$RLCH_SUDOERS_MAIN_FILE"; run check; [ "$status" -eq "$RLCH_MODULE_RESULT_NON_COMPLIANT" ]; }
+@test "check rejects targeted !authenticate per ComplianceAsCode" { printf 'Defaults:svc !authenticate\n' >> "$RLCH_SUDOERS_MAIN_FILE"; run check; [ "$status" -eq "$RLCH_MODULE_RESULT_NON_COMPLIANT" ]; }
+@test "check reports an ambiguous continued occurrence as error" { printf 'Defaults env_reset, \\\n !authenticate\n' >> "$RLCH_SUDOERS_MAIN_FILE"; run check; [ "$status" -eq "$RLCH_MODULE_RESULT_ERROR" ]; }
+@test "check reports invalid sudoers as error" { RLCH_TEST_SUDOERS_FAIL=validate; run check; [ "$status" -eq "$RLCH_MODULE_RESULT_ERROR" ]; }
+@test "apply removes only !authenticate and preserves other options" { printf 'Defaults env_reset,!authenticate,use_pty # keep\n' > "$RLCH_SUDOERS_INCLUDE_DIR/policy"; local r=0; apply || r=$?; [ "$r" -eq "$RLCH_MODULE_RESULT_CHANGED" ]; [ "$(cat "$RLCH_SUDOERS_INCLUDE_DIR/policy")" = 'Defaults env_reset,use_pty # keep' ]; }
+@test "apply comments a directive containing only !authenticate" { printf 'Defaults:svc !authenticate\n' > "$RLCH_SUDOERS_INCLUDE_DIR/policy"; local r=0; apply || r=$?; [ "$r" -eq "$RLCH_MODULE_RESULT_CHANGED" ]; grep -q '^# RLCH CIS 5.2.5 removed:' "$RLCH_SUDOERS_INCLUDE_DIR/policy"; }
+@test "apply is idempotent when compliant" { run apply; [ "$status" -eq "$RLCH_MODULE_RESULT_SUCCESS" ]; [ ! -e "$RLCH_CIS_5_2_5_MANIFEST" ]; }
+@test "apply requires root" { printf 'Defaults !authenticate\n' >> "$RLCH_SUDOERS_MAIN_FILE"; RLCH_TEST_SUDOERS_UID=1000; run apply; [ "$status" -eq "$RLCH_MODULE_RESULT_ERROR" ]; }
+@test "apply restores all files after validation failure" { printf 'Defaults !authenticate\n' >> "$RLCH_SUDOERS_MAIN_FILE"; printf 'Defaults:svc !authenticate,noexec\n' > "$RLCH_SUDOERS_INCLUDE_DIR/policy"; cp "$RLCH_SUDOERS_MAIN_FILE" "$RLCH_TEST_SUDOERS_ROOT/main.before"; cp "$RLCH_SUDOERS_INCLUDE_DIR/policy" "$RLCH_TEST_SUDOERS_ROOT/policy.before"; RLCH_TEST_SUDOERS_FAIL=post_write; local r=0; apply || r=$?; [ "$r" -eq "$RLCH_MODULE_RESULT_ERROR" ]; cmp -s "$RLCH_SUDOERS_MAIN_FILE" "$RLCH_TEST_SUDOERS_ROOT/main.before"; cmp -s "$RLCH_SUDOERS_INCLUDE_DIR/policy" "$RLCH_TEST_SUDOERS_ROOT/policy.before"; [ ! -e "$RLCH_CIS_5_2_5_STATE_DIR" ]; }
+@test "validate delegates to check" { printf 'Defaults !authenticate\n' >> "$RLCH_SUDOERS_MAIN_FILE"; run validate; [ "$status" -eq "$RLCH_MODULE_RESULT_NON_COMPLIANT" ]; }
+@test "rollback restores every modified file exactly" { printf 'Defaults !authenticate,env_reset\n' >> "$RLCH_SUDOERS_MAIN_FILE"; printf 'Defaults:svc noexec,!authenticate\n# keep\n' > "$RLCH_SUDOERS_INCLUDE_DIR/policy"; cp "$RLCH_SUDOERS_MAIN_FILE" "$RLCH_TEST_SUDOERS_ROOT/main.before"; cp "$RLCH_SUDOERS_INCLUDE_DIR/policy" "$RLCH_TEST_SUDOERS_ROOT/policy.before"; local a=0 b=0; apply || a=$?; rollback || b=$?; [ "$a" -eq "$RLCH_MODULE_RESULT_CHANGED" ]; [ "$b" -eq "$RLCH_MODULE_RESULT_CHANGED" ]; cmp -s "$RLCH_SUDOERS_MAIN_FILE" "$RLCH_TEST_SUDOERS_ROOT/main.before"; cmp -s "$RLCH_SUDOERS_INCLUDE_DIR/policy" "$RLCH_TEST_SUDOERS_ROOT/policy.before"; }
+@test "rollback is idempotent without state" { run rollback; [ "$status" -eq "$RLCH_MODULE_RESULT_SUCCESS" ]; }
+@test "metadata uses exact ComplianceAsCode rule" { source "${RLCH_TEST_REPOSITORY_ROOT}/modules/cis/5/2/5/metadata.conf"; [ "$RLCH_MODULE_OPENSCAP_RULE" = xccdf_org.ssgproject.content_rule_sudo_remove_no_authenticate ]; }
