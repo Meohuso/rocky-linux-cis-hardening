@@ -314,10 +314,9 @@ Completed and CI validated:
 - 5.1.19
 - 5.1.20
 - 5.1.21
-
-Implemented with local validation complete:
-
 - 5.1.22
+
+Section 5.1 is complete and CI validated for the Level 1 Server baseline. CIS 5.1.10 and 5.1.11 are the only skipped controls, both because they are Level 2 Server only. No control in section 5.1 is runtime not applicable.
 
 Skipped for the Level 1 Server baseline:
 
@@ -366,7 +365,17 @@ CIS 5.1.21 is an automated Level 1 Server control using the exact ComplianceAsCo
 
 CIS 5.1.22 is an automated Level 1 Server control using the exact ComplianceAsCode `sshd_enable_pam` rule. It enforces `UsePAM yes` in a control-specific drop-in with exact rollback.
 
-GitHub Actions validation for CIS 5.1.22 is required to complete section 5.1. No work on CIS 5.2 has started.
+CIS 5.1.22 was validated by GitHub Actions run 205 on commit `715c1b9a684658939711ad49c7c086f8cabcd291`. Development previously stopped before CIS 5.2.
+
+### Section 5.2
+
+Implemented with local validation complete:
+
+- 5.2.1
+
+CIS 5.2.1 is an automated Level 1 Server control using the exact ComplianceAsCode `package_sudo_installed` rule. It installs the `sudo` package only when absent, records control-specific rollback state before installation, and removes sudo during rollback only when this control installed it.
+
+GitHub Actions validation for CIS 5.2.1 is required before development proceeds to CIS 5.2.2.
 
 ## Known technical debt / mandatory pre-production review
 
