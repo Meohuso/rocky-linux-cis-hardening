@@ -88,6 +88,57 @@ sudoers_global_boolean_enabled() {
     return "${RLCH_MODULE_RESULT_NON_COMPLIANT}"
 }
 
+sudoers_global_value_equals() {
+    local option="${1:-}" expected="${2:-}" files_file result
+
+    [[ "${option}" =~ ^[a-z][a-z0-9_]*$ && -n "${expected}" ]] || return "${RLCH_MODULE_RESULT_ERROR}"
+    sudoers_validate || return "${RLCH_MODULE_RESULT_ERROR}"
+    files_file="$(mktemp)" || return "${RLCH_MODULE_RESULT_ERROR}"
+    if ! sudoers_configuration_files > "${files_file}"; then
+        rm -f -- "${files_file}"
+        return "${RLCH_MODULE_RESULT_ERROR}"
+    fi
+    result=0
+    # shellcheck disable=SC2016 # The single-quoted program is evaluated by awk.
+    xargs -0 awk -v wanted="${option}" -v expected="${expected}" '
+        function trim(value) {
+            sub(/^[[:space:]]+/, "", value); sub(/[[:space:]]+$/, "", value); return value
+        }
+        function unquote(value) {
+            if (value ~ /^".*"$/) { sub(/^"/, "", value); sub(/"$/, "", value) }
+            return value
+        }
+        function evaluate(line, body, count, global, idx, item, items, scoped, value) {
+            line = trim(line)
+            if (line == "" || line ~ /^#/ || line !~ /^Defaults([[:space:]]|:|@|>|!)/) return
+            global = (line ~ /^Defaults[[:space:]]/); scoped = !global
+            body = line; sub(/^Defaults[^[:space:]]*/, "", body); body = trim(body)
+            count = split(body, items, ",")
+            for (idx = 1; idx <= count; idx++) {
+                item = trim(items[idx])
+                if (item !~ ("^" wanted "[[:space:]]*=")) continue
+                value = item; sub("^" wanted "[[:space:]]*=[[:space:]]*", "", value)
+                value = unquote(trim(value))
+                if (global) global_matches = (value == expected ? 1 : -1)
+                if (scoped && value != expected) scoped_conflict = 1
+            }
+        }
+        {
+            current = $0; sub(/[[:space:]]*#.*/, "", current)
+            if (continued != "") current = continued current
+            if (current ~ /\\[[:space:]]*$/) { sub(/\\[[:space:]]*$/, "", current); continued = current; next }
+            continued = ""; evaluate(current)
+        }
+        END {
+            if (continued != "") evaluate(continued)
+            exit !(global_matches == 1 && scoped_conflict != 1)
+        }
+    ' < "${files_file}" || result=$?
+    rm -f -- "${files_file}"
+    [[ "${result}" -eq 0 ]] && return "${RLCH_MODULE_RESULT_SUCCESS}"
+    return "${RLCH_MODULE_RESULT_NON_COMPLIANT}"
+}
+
 sudoers_restore_managed_file() {
     local file="${1:-}" state_file="${2:-}" backup directory state temporary
     backup="${state_file}.original"

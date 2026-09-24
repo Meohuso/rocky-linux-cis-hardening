@@ -372,16 +372,19 @@ CIS 5.1.22 was validated by GitHub Actions run 205 on commit `715c1b9a6846589397
 Completed and CI validated:
 
 - 5.2.1
+- 5.2.2
 
 Implemented with local validation complete:
 
-- 5.2.2
+- 5.2.3
 
 CIS 5.2.1 is an automated Level 1 Server control using the exact ComplianceAsCode `package_sudo_installed` rule. It installs the `sudo` package only when absent, records control-specific rollback state before installation, and removes sudo during rollback only when this control installed it.
 
 CIS 5.2.2 is an automated Level 1 Server control using the exact ComplianceAsCode `sudo_add_use_pty` rule. It validates sudoers syntax before evaluating global effective policy, rejects active global or scoped `!use_pty` exceptions, and manages a dedicated mode `0440` sudoers drop-in. A failed `visudo` validation restores the prior file immediately; successful rollback affects only this control's file.
 
-GitHub Actions validation for CIS 5.2.2 is required before development proceeds to CIS 5.2.3.
+CIS 5.2.3 is an automated Level 1 Server control using the exact ComplianceAsCode `sudo_custom_logfile` rule and its default `/var/log/sudo.log` value. It configures only the sudoers `logfile` option; it does not create an empty log file because the rule validates configuration and sudo creates the file when it writes. The dedicated drop-in is validated by `visudo` and has isolated exact rollback state.
+
+GitHub Actions validation for CIS 5.2.3 is required before the Level 2 Server-only CIS 5.2.4 skip is recorded and development proceeds to CIS 5.2.5.
 
 ## Known technical debt / mandatory pre-production review
 
