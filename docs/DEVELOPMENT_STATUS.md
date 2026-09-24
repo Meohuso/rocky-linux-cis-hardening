@@ -374,10 +374,11 @@ Completed and CI validated:
 - 5.2.1
 - 5.2.2
 - 5.2.3
+- 5.2.5
 
 Implemented with local validation complete:
 
-- 5.2.5
+- 5.2.6
 
 Skipped for the Level 1 Server baseline:
 
@@ -393,7 +394,9 @@ CIS 5.2.4 is `SKIPPED` because the benchmark classifies `sudo_remove_nopasswd` a
 
 CIS 5.2.5 is an automated Level 1 Server control using the exact ComplianceAsCode `sudo_remove_no_authenticate` rule. Because that rule disallows every active `!authenticate` occurrence, remediation removes only that option from affected global or scoped Defaults directives, preserves all other options and comments, validates with `visudo`, and records exact per-file backups in isolated state. Ambiguous continued directives are rejected rather than rewritten destructively.
 
-GitHub Actions validation for CIS 5.2.5 is required before development proceeds to CIS 5.2.6.
+CIS 5.2.6 is an automated Level 1 Server control mapped to ComplianceAsCode `sudo_require_reauthentication` plus `var_sudo_timestamp_timeout=15_minutes`. Metadata is `manual` because the schema cannot encode both. The rule's equals operator requires exactly `timestamp_timeout=15`; absent, zero, negative, lower, higher, or conflicting scoped values are non-compliant. Remediation uses a dedicated late-sorting drop-in, validates with `visudo`, and removes its own change if it cannot establish compliance.
+
+GitHub Actions validation for CIS 5.2.6 is required before development proceeds to CIS 5.2.7.
 
 ## Known technical debt / mandatory pre-production review
 
