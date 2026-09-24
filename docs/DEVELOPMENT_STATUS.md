@@ -369,13 +369,19 @@ CIS 5.1.22 was validated by GitHub Actions run 205 on commit `715c1b9a6846589397
 
 ### Section 5.2
 
-Implemented with local validation complete:
+Completed and CI validated:
 
 - 5.2.1
 
+Implemented with local validation complete:
+
+- 5.2.2
+
 CIS 5.2.1 is an automated Level 1 Server control using the exact ComplianceAsCode `package_sudo_installed` rule. It installs the `sudo` package only when absent, records control-specific rollback state before installation, and removes sudo during rollback only when this control installed it.
 
-GitHub Actions validation for CIS 5.2.1 is required before development proceeds to CIS 5.2.2.
+CIS 5.2.2 is an automated Level 1 Server control using the exact ComplianceAsCode `sudo_add_use_pty` rule. It validates sudoers syntax before evaluating global effective policy, rejects active global or scoped `!use_pty` exceptions, and manages a dedicated mode `0440` sudoers drop-in. A failed `visudo` validation restores the prior file immediately; successful rollback affects only this control's file.
+
+GitHub Actions validation for CIS 5.2.2 is required before development proceeds to CIS 5.2.3.
 
 ## Known technical debt / mandatory pre-production review
 

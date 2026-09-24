@@ -97,6 +97,7 @@ _bootstrap_load_core_libraries() {
         "system.sh"
         "filesystem.sh"
         "sshd.sh"
+        "sudoers.sh"
         "kernel_module.sh"
         "modules.sh"
         "module_api.sh"
