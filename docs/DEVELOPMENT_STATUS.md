@@ -408,6 +408,10 @@ CIS 5.3.1.1 was validated by GitHub Actions run 212 on commit `e4b8f49f2498e987a
 
 CIS 5.3.1.2 is Level 1 Server and `pending` in ComplianceAsCode, with no exact rule; metadata is `manual`. It checks that `authselect` is installed, available in refreshed enabled DNF5 repositories, and has no pending upgrade. Absent or outdated packages are NON_COMPLIANT; an unavailable repository or missing available package is ERROR. Automatic installation and upgrade are disabled because a guaranteed rollback of this authentication package cannot be established. An operator-managed snapshot and recovery plan are required when remediation is needed. `apply` returns ERROR without making changes; `rollback` is a no-op. This limitation must be resolved or explicitly accepted before production validation.
 
+CIS 5.3.1.2 was validated by GitHub Actions run 213 on commit `0ffadfb58ae5cb675b06d783ee6d7040dc2bca13`.
+
+CIS 5.3.1.3 is Level 1 Server and `pending` in ComplianceAsCode. Its `package_pam_pwquality_installed` rule checks only that `libpwquality` is installed, while the CIS title requires the latest version. Metadata is therefore `manual`: claiming the package-installation rule as an exact mapping would be misleading. The module checks installation, fresh enabled repository availability and pending upgrades. Absent or outdated is NON_COMPLIANT; unavailable repositories or no available package produce ERROR. Automatic package changes are disabled until a reliable rollback path for the exact prior version exists; `apply` reports ERROR when remediation is needed and `rollback` has no changes to undo. This limitation requires an operator-managed snapshot and recovery plan or explicit acceptance before production validation.
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
