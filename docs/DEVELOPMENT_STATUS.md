@@ -424,6 +424,10 @@ CIS 5.3.2.2 was validated by GitHub Actions run 216 on commit `67fbf7d66561c916a
 
 CIS 5.3.2.3 is Level 1 Server and automated in the CIS mapping, but ComplianceAsCode has no exact primary rule. Its related `package_pam_pwquality_installed` rule checks package presence only. Metadata uses `manual`. After `authselect check`, the module verifies a single active `password` hook for `pam_pwquality.so` in each generated stack. Missing or duplicate hooks are NON_COMPLIANT; authselect inconsistency is ERROR. Changes to the active profile require reviewing its existing PAM stack and features, so automatic apply returns ERROR when correction is needed without changing files. Rollback has no changes to undo. This is an explicit limitation before production validation.
 
+CIS 5.3.2.3 was validated by GitHub Actions run 217 on commit `036ad060103e861076f60fa1bf1eac6458383815`.
+
+CIS 5.3.2.4 is Level 1 Server with no exact primary rule. The `accounts_password_pam_pwhistory_remember_password_auth` and `accounts_password_pam_pwhistory_remember_system_auth` rules are related mappings for a later control; metadata is `manual`. After `authselect check`, the module requires exactly one active `password` hook for `pam_pwhistory.so` in each generated stack. It does not set the history length or other later policy. Missing or duplicate hooks are NON_COMPLIANT; authselect inconsistency is ERROR. Automatic apply refuses to rewrite an existing PAM profile or its generated stacks without a reviewed stack order; rollback is a no-op. This is a documented automated-remediation limitation.
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
