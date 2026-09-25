@@ -404,6 +404,10 @@ CIS 5.2 is complete: six Level 1 Server controls have dedicated commits and gree
 
 CIS 5.3.1.1 is a Level 1 Server control marked `pending` by ComplianceAsCode, with no exact OpenSCAP rule. Metadata therefore records `manual`. Its check requires an installed `pam` RPM, a refreshed DNF5 repository query finding PAM in enabled repositories, and no available update. An absent package or available update is NON_COMPLIANT; an unavailable repository or missing available package is ERROR because the latest version cannot be established. Automatic installation or upgrade is deliberately disabled: PAM is a core authentication package, and an exact package rollback cannot be guaranteed by DNF history or by the availability of an older RPM. Remediation requires an operator-managed system snapshot and recovery plan. `apply` returns ERROR when remediation is needed and makes no changes; `rollback` is a no-op. This limitation must be resolved or explicitly accepted before declaring the Level 1 image fully remediated.
 
+CIS 5.3.1.1 was validated by GitHub Actions run 212 on commit `e4b8f49f2498e987a509be91bf949cdd178f4b57`.
+
+CIS 5.3.1.2 is Level 1 Server and `pending` in ComplianceAsCode, with no exact rule; metadata is `manual`. It checks that `authselect` is installed, available in refreshed enabled DNF5 repositories, and has no pending upgrade. Absent or outdated packages are NON_COMPLIANT; an unavailable repository or missing available package is ERROR. Automatic installation and upgrade are disabled because a guaranteed rollback of this authentication package cannot be established. An operator-managed snapshot and recovery plan are required when remediation is needed. `apply` returns ERROR without making changes; `rollback` is a no-op. This limitation must be resolved or explicitly accepted before production validation.
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
