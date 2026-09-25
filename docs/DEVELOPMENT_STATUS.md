@@ -375,10 +375,11 @@ Completed and CI validated:
 - 5.2.2
 - 5.2.3
 - 5.2.5
-
-Implemented with local validation complete:
-
 - 5.2.6
+
+Current control (verify its GitHub Actions result before declaring completion):
+
+- 5.2.7
 
 Skipped for the Level 1 Server baseline:
 
@@ -396,7 +397,9 @@ CIS 5.2.5 is an automated Level 1 Server control using the exact ComplianceAsCod
 
 CIS 5.2.6 is an automated Level 1 Server control mapped to ComplianceAsCode `sudo_require_reauthentication` plus `var_sudo_timestamp_timeout=15_minutes`. Metadata is `manual` because the schema cannot encode both. The rule's equals operator requires exactly `timestamp_timeout=15`; absent, zero, negative, lower, higher, or conflicting scoped values are non-compliant. Remediation uses a dedicated late-sorting drop-in, validates with `visudo`, and removes its own change if it cannot establish compliance.
 
-GitHub Actions validation for CIS 5.2.6 is required before development proceeds to CIS 5.2.7.
+CIS 5.2.6 was validated by GitHub Actions run 210 on commit `40e9e5c789db6bb5d1e3c97434c501c13e1c221b`.
+
+CIS 5.2.7 maps to ComplianceAsCode `use_pam_wheel_group_for_su`, `ensure_pam_wheel_group_empty`, and the `cis` option of `var_pam_wheel_group_for_su`. This option resolves to the group name `sugroup`, not a group literally named `cis`. Metadata is `manual` because this is a composite mapping. Remediation adds only the required `auth required pam_wheel.so use_uid group=sugroup` PAM line, preserving all existing lines and their order. It creates `sugroup` only if absent, refuses to change a populated group or competing active PAM rule, and does not change administrative group memberships. Isolated rollback restores the exact prior PAM file only when no subsequent edits occurred, and deletes `sugroup` only when this control created it and the group remains empty with the same GID. Local Bats and ShellCheck validation completed; the corresponding GitHub Actions run determines final acceptance.
 
 ## Known technical debt / mandatory pre-production review
 
