@@ -376,9 +376,6 @@ Completed and CI validated:
 - 5.2.3
 - 5.2.5
 - 5.2.6
-
-Current control (verify its GitHub Actions result before declaring completion):
-
 - 5.2.7
 
 Skipped for the Level 1 Server baseline:
@@ -400,6 +397,12 @@ CIS 5.2.6 is an automated Level 1 Server control mapped to ComplianceAsCode `sud
 CIS 5.2.6 was validated by GitHub Actions run 210 on commit `40e9e5c789db6bb5d1e3c97434c501c13e1c221b`.
 
 CIS 5.2.7 maps to ComplianceAsCode `use_pam_wheel_group_for_su`, `ensure_pam_wheel_group_empty`, and the `cis` option of `var_pam_wheel_group_for_su`. This option resolves to the group name `sugroup`, not a group literally named `cis`. Metadata is `manual` because this is a composite mapping. Remediation adds only the required `auth required pam_wheel.so use_uid group=sugroup` PAM line, preserving all existing lines and their order. It creates `sugroup` only if absent, refuses to change a populated group or competing active PAM rule, and does not change administrative group memberships. Isolated rollback restores the exact prior PAM file only when no subsequent edits occurred, and deletes `sugroup` only when this control created it and the group remains empty with the same GID. Local Bats and ShellCheck validation completed; the corresponding GitHub Actions run determines final acceptance.
+
+CIS 5.2 is complete: six Level 1 Server controls have dedicated commits and green CI runs 206–211. CIS 5.2.4 is SKIPPED (Level 2 Server); no controls are NOT_APPLICABLE. CIS 5.2.7 was validated on commit `78056b35c22a0f9759cb1d0e8604a972eeee4072` by GitHub Actions run 211. Development stopped before CIS 5.3.
+
+### Section 5.3
+
+CIS 5.3.1.1 is a Level 1 Server control marked `pending` by ComplianceAsCode, with no exact OpenSCAP rule. Metadata therefore records `manual`. Its check requires an installed `pam` RPM, a refreshed DNF5 repository query finding PAM in enabled repositories, and no available update. An absent package or available update is NON_COMPLIANT; an unavailable repository or missing available package is ERROR because the latest version cannot be established. Automatic installation or upgrade is deliberately disabled: PAM is a core authentication package, and an exact package rollback cannot be guaranteed by DNF history or by the availability of an older RPM. Remediation requires an operator-managed system snapshot and recovery plan. `apply` returns ERROR when remediation is needed and makes no changes; `rollback` is a no-op. This limitation must be resolved or explicitly accepted before declaring the Level 1 image fully remediated.
 
 ## Known technical debt / mandatory pre-production review
 
