@@ -420,6 +420,10 @@ CIS 5.3.2.1 was validated by GitHub Actions run 215 on commit `eb3d6f09364c00090
 
 CIS 5.3.2.2 is Level 1 Server, with two ComplianceAsCode rules: `account_password_pam_faillock_password_auth` and `account_password_pam_faillock_system_auth`. Metadata is `manual` because the schema cannot encode both. After `authselect check`, the module checks the generated `system-auth` and `password-auth` stacks for ordered `preauth`, `pam_unix`, `authfail`, and the `pam_faillock` account hook. Missing or misordered entries are NON_COMPLIANT; inconsistent authselect is ERROR. Automatic remediation is disabled because generated PAM files must not be edited directly and the correct changes to the selected profile depend on its existing structure and features. `apply` returns ERROR without mutation when correction is needed; rollback is a no-op. This is a documented automated-remediation limitation.
 
+CIS 5.3.2.2 was validated by GitHub Actions run 216 on commit `67fbf7d66561c916abc8058dee233239edfca4d9`.
+
+CIS 5.3.2.3 is Level 1 Server and automated in the CIS mapping, but ComplianceAsCode has no exact primary rule. Its related `package_pam_pwquality_installed` rule checks package presence only. Metadata uses `manual`. After `authselect check`, the module verifies a single active `password` hook for `pam_pwquality.so` in each generated stack. Missing or duplicate hooks are NON_COMPLIANT; authselect inconsistency is ERROR. Changes to the active profile require reviewing its existing PAM stack and features, so automatic apply returns ERROR when correction is needed without changing files. Rollback has no changes to undo. This is an explicit limitation before production validation.
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
