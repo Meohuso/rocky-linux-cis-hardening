@@ -412,6 +412,10 @@ CIS 5.3.1.2 was validated by GitHub Actions run 213 on commit `0ffadfb58ae5cb675
 
 CIS 5.3.1.3 is Level 1 Server and `pending` in ComplianceAsCode. Its `package_pam_pwquality_installed` rule checks only that `libpwquality` is installed, while the CIS title requires the latest version. Metadata is therefore `manual`: claiming the package-installation rule as an exact mapping would be misleading. The module checks installation, fresh enabled repository availability and pending upgrades. Absent or outdated is NON_COMPLIANT; unavailable repositories or no available package produce ERROR. Automatic package changes are disabled until a reliable rollback path for the exact prior version exists; `apply` reports ERROR when remediation is needed and `rollback` has no changes to undo. This limitation requires an operator-managed snapshot and recovery plan or explicit acceptance before production validation.
 
+CIS 5.3.1.3 was validated by GitHub Actions run 214 on commit `874ae3cece7d6595f80a2fa995a85992a0713ba4`.
+
+CIS 5.3.2.1 is a Level 1 Server automated benchmark control mapped exactly to `accounts_password_pam_modules_in_authselect_profile`. It reads the selected profile from `authselect.conf`, verifies `authselect check`, then checks the profile's `system-auth` and `password-auth` source files for `pam_pwquality.so`, `pam_pwhistory.so`, `pam_faillock.so` and `pam_unix.so`. Standard profiles are read from the system defaults; custom profiles from their existing source directory. Missing modules are NON_COMPLIANT and inconsistent authselect state is ERROR. `apply` does not invent PAM stack ordering or replace an organizational profile: it returns ERROR when manual profile remediation is needed, without changing files. Rollback has no changes to undo. This is an explicit automated-remediation limitation before production validation.
+
 ## Known technical debt / mandatory pre-production review
 
 The following items must be resolved or explicitly reviewed before final real-world validation.
