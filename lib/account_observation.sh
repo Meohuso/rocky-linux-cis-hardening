@@ -25,7 +25,8 @@ rlch_accounts_rows() {
     rows="$(LC_ALL=C /usr/bin/awk -v kind="$kind" '
         function integer(s) {return s ~ /^[0-9]+$/ && length(s)<=32 && s+0<=4294967294}
         function name(s) {return s ~ /^[a-zA-Z_][a-zA-Z0-9_.-]*$/}
-        {clean=$0; if (kind=="login_defs") gsub(/\t/, "", clean)
+        {clean=$0; if (kind=="login_defs" || kind=="shells") gsub(/\t/, "", clean)
+         if (kind=="shadow_shells") gsub(/[\t\r]/, "", clean)
          if (index($0,sprintf("%c",0)) || clean ~ /[[:cntrl:]]/ || $0 ~ /\|/) {bad=1; next}}
         kind=="passwd" {
             count=split($0,f,":")
@@ -33,12 +34,13 @@ rlch_accounts_rows() {
             out[++n]=f[1] "|" sprintf("%.0f",f[3]+0) "|" (f[2]=="x" ? "shadow" : "other") "|" f[7]
             next
         }
-        kind=="shadow" {
+        (kind=="shadow" || kind=="shadow_shells") {
             count=split($0,f,":")
             if (count!=9 || !name(f[1]) || seen[f[1]]++) {bad=1; next}
             for (j=3;j<=8;j++) if (f[j]!="" && f[j]!="-1" && (!integer(f[j]) || f[j]+0>2147483647)) bad=1
             if (f[9]!="" && !integer(f[9])) bad=1
-            out[++n]=f[1] "|" (f[2] ~ /^[!*]/ ? "locked" : "unlocked")
+            if (kind=="shadow_shells") out[++n]=f[1] "|" (f[2] ~ /^[ \t\r;*!\\]*$/ ? "locked" : "unlocked")
+            else out[++n]=f[1] "|" (f[2] ~ /^[!*]/ ? "locked" : "unlocked")
             next
         }
         kind=="login_defs" {
@@ -50,9 +52,15 @@ rlch_accounts_rows() {
             }
             next
         }
+        kind=="shells" {
+            # CAS collects exact slash-leading lines; no tokenization, trim,
+            # executable/existence check or inline-comment normalization.
+            if ($0 ~ /^\// && !seen[$0]++) out[++n]=$0
+            next
+        }
         {bad=1}
         END {
-            if (bad || ((kind=="passwd" || kind=="shadow") && n==0)) exit 2
+            if (bad || ((kind=="passwd" || kind=="shadow" || kind=="shadow_shells" || kind=="shells") && n==0)) exit 2
             if (kind=="login_defs") {
                 keys[1]="UID_MIN"; keys[2]="SYS_UID_MIN"; keys[3]="SYS_UID_MAX"
                 for (i=1;i<=3;i++) print keys[i] "|" (keys[i] in settings ? settings[keys[i]] : "unset")
