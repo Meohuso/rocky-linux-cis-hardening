@@ -1711,3 +1711,197 @@ Real Rocky Linux10.2 validation remains: exact distro/coreutils/shadow-utils/RPM
 Initial dedicated TAP1..79:79 successes/0 failures/0 skips, first run. Added one further non-hashing preservation test to cover atime/mtime/ctime and full identity/attributes of every present artificial account file plus foreign config for present/absent/deficit target states. This supplements the already passing target-atime test; no production content read, no parent-atime guarantee, no existing assertion change. Final dedicated suite is rerun before complete-suite validation. Local tooling preparation: a retained ShellCheck deb was truncated and extraction failed; apt package lists were absent, so apt download could not locate the package. A fresh official Ubuntu snapshot deb was downloaded outside the repo, extracted successfully and version0.9.0 confirmed. No runner/project/workflow dependencies changed. Rendering dependencies likewise remain temporary/outside repo. No production implementation correction or published provisional SHA.
 
 Final local validation executed in requested order: Bash module/metadata syntax and actual Bats preprocessing/syntax pass; final dedicated TAP1..80 exits0 (80 successes/0 failures/0 skips); targeted7.1.1–7/module_api/filesystem/6.2.4.1/5.4.3.3 regressions/helpers TAP1..614 exits0 (614 successes/0 failures/0 skips); then complete suite all235 Bats files in eight disjoint batches30/30/30/29/29/29/29/29, plans1..625,1..564,1..626,1..720,1..590,1..706,1..563,1..636, every batch exits0. Aggregate5030 tests =5028 successes/0 failures/exactly2 inherited local Unix-socket skips (6.2.1.2 unexpected socket and6.2.2.1.2 direct socket helper). Both must execute successfully in exact-SHA CI. Complete-suite regression7.1.1/2/3/4/5/6/7 counts44/62/56/70/64/77/66, all pass without skips; new7.1.8=80 also passes without skip. Next local ShellCheck0.9.0 passes directly on new module/metadata and separately all40 unchanged workflow inputs; git diff--check and absence of historical/helper/workflow changes pass. No assertion weakened, test omitted, new skip or production implementation correction. Only dedicated rerun for added non-hashing atime test, no full-suite rerun/harness/teardown incident or provisional publication. Fresh main verification and exact tree comparison required before final commit; exact finalSHA/tree/run/attempt/CI results verified in report because a commit cannot self-record them. No next-control analysis. STOP after7.1.8.
+
+## CIS 7.1.9 — stable `/etc/shells` attribute observation (2026-10-15)
+
+Scope: **Ensure permissions on /etc/shells are configured (Automated)**,
+CIS RHEL 9 v2.0.0, Level 1 Server and Level 1 Workstation (`l1_server`,
+`l1_workstation`), CAS mapping `products/rhel9/controls/cis_rhel9.yml` at
+`a4b23038aaf65a25d6e88baa2800c03d09fda577`. Only this control is implemented.
+The framework target remains future Rocky Linux 10.2 validation.
+
+Checkpoint verified before editing: local HEAD and origin/main, remote main
+`e1b12a06fc4e00c95acf704fd5f615c472147ed3`, tree
+`e092ebab0fbdf3ad37373e984bef1d3fa4bf6faf`, direct parent
+`ed720b62bfe58aa5f64a508642a2c7c9683421c0`; clean worktree, sole remote branch
+main, no observed concurrent change. CI 288 / run 38568049330 / attempt 1
+completed successfully on that SHA: Bats job 115865709302, TAP 1..5030,
+5030 successes, no failures or skips; ShellCheck job 115865710028 successful,
+version 0.9.0. Publication must recheck the checkpoint with a non-forced lease.
+
+### Pinned source and policy
+
+| Primary rule / exact XCCDF identifier | RHEL9 CCE | RHEL10 contextual CCE | Operational requirement |
+|---|---|---|---|
+| `xccdf_org.ssgproject.content_rule_file_groupowner_etc_shells` | CCE-90434-2 | CCE-90020-9 | Numeric GID 0 |
+| `xccdf_org.ssgproject.content_rule_file_owner_etc_shells` | CCE-90435-9 | CCE-89594-6 | Numeric UID 0 |
+| `xccdf_org.ssgproject.content_rule_file_permissions_etc_shells` | CCE-90432-6 | CCE-89912-0 | Mode 0644 or more restrictive |
+
+The three `rule.yml` files under
+`linux_os/guide/system/permissions/files/permissions_important_account_files/`
+were inspected with description, rationale, OCIL, fixtext and SRG macros;
+shared `file_owner`, `file_groupowner`, `file_permissions` preprocessors,
+OVAL/Bash/Ansible templates and their pass/fail fixtures were reviewed and
+rendered using CAS's own Jinja processor for RHEL9. Generated inspection
+outputs remained outside the repository; no CAS fixture or remediation ran.
+CAS checkout remains unchanged. Policy references to these rules (including
+other CIS products and ANSSI/SLE policies) do not override this pinned mapping.
+
+Owner/group templates carry literal numeric 0 into OVAL, without needing
+name-service resolution for the criterion. The permission preprocessor defaults
+`allow_stricter_permissions` to true: OVAL forbids suid, sgid, sticky, uexec,
+gwrite, gexec, owrite, oexec, leaving the four 0644 bits optional. There are
+16 accepted subsets, including 0640, 0600, 0444 and 0000; this does not require
+adding readability or owner write access. Bash renders
+`chmod u-xs,g-xws,o-xwt /etc/shells`; Ansible applies the same subtractive mode
+conditionally on file existence. Owner/group Bash use numeric id/getent
+selection, stat and `chown --no-dereference` / `chgrp --no-dereference`;
+Ansible uses numeric identities and `follow: false` for owner/group. These are
+source observations, not commands executed on the runner.
+
+Source discrepancy: permission `srg_requirement` says **0640**, whereas its
+actual `template.vars.filemode`, description, OCIL and fixtext say **0644**;
+the rendered OVAL state, subtractive Bash/Ansible and stricter-permissions
+fixture determine the operational 0644 policy retained here. OVAL's generic
+extended-ACL description is not proof that this POSIX observer assesses ACLs.
+No product-qualified UID/GID/mode overrides exist in these three rule YAMLs.
+Independent product-context renders for RHEL8/9/10, SLE15/16, Ubuntu24.04,
+Debian12 and Hummingbird retain 0/0/0644; Hummingbird changes descriptive
+wording, and product CCEs differ. These are not runtime validations of those
+products. In particular, no shadow-group or mode-0000 secret-file policy is
+transferred to `/etc/shells`, a non-secret list of recognized login shells
+whose integrity matters to programs consuming it.
+
+All three OVAL templates test `none_exist` on filtered violating objects and
+exclude symlinks; owner/group have generic `no_file.pass.sh` fixtures. This
+can accept absence or symlinks in the generic CAS model. Our explicit stricter
+primary-file safety policy is **absence ERROR**, consistent with primary
+passwd/group/shadow/gshadow observers: missing attributes cannot establish
+configuration integrity. It is not asserted to be an extra CIS requirement or
+an OpenSCAP-equivalent result. Never create/reconstruct this primary file from
+a similarly named file or a backup. Unsafe types, symlinks and multiple
+hardlinks likewise require review rather than invented permission deficits.
+
+### Architecture, safety and remediation assessment
+
+The private numeric stat observer follows the primary non-secret 7.1.1/7.1.3
+contract and carries forward 7.1.7/7.1.8's high raw-bit guard. Shared
+`rlch_journal_path`, `rlch_journal_mode` and `rlch_tmout_directory` are reused
+without modification. Canonical absolute target and parent paths, parent
+read/search access and explicit read/search mode bits are checked before and
+after evidence; the target must remain a regular non-symlink. Single-link
+numeric metadata is collected twice with no dereference and no body read:
+device, inode, nlink, UID, GID, octal mode, raw mode/type, nanosecond ctime.
+Only two matching complete validated tuples permit classification.
+
+Before Bash command substitution can discard NUL bytes, the private pipefail
+pipeline rejects empty/multiple records, control/NUL bytes and output over
+1024 bytes. Strict bounded canonical numeric fields, UID/GID <=4294967294,
+raw hexadecimal <=8 digits, no bits outside Linux 0177777, regular type and
+matching raw/octal mode are required. This rejects `ffff8000`, `ffff41ed` and
+`ffff81a4`, including high bits that low-bit masking alone would miss. Extra
+fields or malformed ctime fail validation. ctime syntax is an evidence format
+check, not a calendar validator. Invalid evidence, disappearance, substitution
+or instability has ERROR precedence over any permission/ownership deficit.
+Diagnostics are fixed, bounded stderr; no raw evidence, contents or test-root
+paths are emitted, and stdout remains empty.
+
+The non-secret nature of shells was reconsidered independently. CAS's
+subtractive chmod is suitable policy intent, but its pathname chmod and
+separate ownership operations do not bind a complete transaction to a verified
+inode. Framework `filesystem_set_owner/group/mode` similarly check existence
+then invoke pathname chown/chgrp/chmod. `filesystem_backup/restore` delegate to
+copy operations; they read contents and do not supply an inode-bound atomic
+metadata transaction, crash journal, exact ACL/xattr/SELinux/capability capture
+and restore, or coordination with concurrent configuration replacement.
+Chown may clear special bits/capabilities, chmod can alter ACL masks, partial
+failure or a crash between commands remains possible, and restoring a copied
+file can replace the inode or overwrite a concurrent change. Even ctime cannot
+be restored exactly by these helpers. A descriptor-bound transaction and full
+restoration capability cannot be demonstrated within these unchanged APIs.
+Therefore no automatic mutation is introduced merely because this file is
+non-secret; no broader helper transaction architecture is added in this scope.
+
+| API | Contract |
+|---|---|
+| `check` | Fresh observation: SUCCESS for stable 0/0 and subset of 0644; NON_COMPLIANT only for stable proven UID/GID/permission deficit; otherwise ERROR |
+| `validate` | Calls check afresh, without cached evidence |
+| `apply` | Fresh observation without mutation; SUCCESS if conforming, otherwise ERROR with manual inode/preservation/rollback guidance |
+| `rollback` | Silent, repeatable SUCCESS no-op, with no state or resources required |
+
+No CHANGED result, chmod/chown/chgrp, body reads, backups, NSS, accounts,
+packages, network or services are needed by the module. Fixture injection is
+`RLCH_CIS_7_1_9_ROOT` (default `/`); tests always set an artificial root before
+loading the module and never evaluate or mutate real `/etc/shells`.
+The scalar OpenSCAP metadata remains `manual`, since three primary XCCDF rules
+cannot be represented accurately by one scalar; CIS remains Automated. Module
+title follows existing convention omitting the parenthesized status suffix.
+
+Limits: double observations and canonicality checks reduce detectable races,
+not an atomic inode guarantee, hostile ABA defense, namespace lock, or proof
+of ancestor ownership/access policy. A change after the last observation is
+possible. No shell-list content validation, ACL/xattr/SELinux/capability
+assessment, RPM verification or actual Rocky/OpenSCAP execution is claimed.
+Mode 0000 may impair service use even though it is a CAS-permitted subset;
+the module does not add permissions or infer application availability.
+
+### Tests, validation and remaining target work
+
+Dedicated Bats fixtures cover loading after the prior module, exact metadata,
+actual and normalized numeric ownership, all 16 accepted subsets, forbidden
+and special bits, 4096 shared-mode cases, invalid high raw bits and evidence,
+absence/appearance/removal/replacement, canonicality, inaccessible parent,
+symlinks, hardlinks, special types, all tuple-field changes, ERROR precedence,
+fresh API calls, idempotence, silent rollback, redacted diagnostics and command
+spies. Only UID/GID fixture evidence is normalized; the real parser and
+classifier remain active. Actual-stat cases determine their expectation from
+real fixture ownership. Artificial body hashes and independent preopened
+descriptors cover mode-0000 preservation without requiring root. A separate
+no-hashing test verifies atime/mtime/ctime and metadata of shells, all eight
+account neighbors and foreign configuration for conforming, absent and
+deficient states. Special socket/device type evidence is injected, without
+privileged fixtures or newly introduced skips. Mutation/restoration tests are
+not applicable to this observation-only module.
+
+Required validation results are recorded below after execution. Source
+inspection tooling uses temporary Jinja2/PyYAML and ShellCheck 0.9.0 outside
+the repository; framework dependencies and CI workflow remain unchanged.
+
+Real Rocky Linux 10.2 validation remains required: inventory OS/RPM/tool
+versions and packaged shells attributes; inspect ACL/xattr/SELinux/capabilities;
+check GNU stat/awk/realpath compatibility; compare pinned OpenSCAP results and
+explain absence/symlink safety divergence; assess remediation/restoration only
+in an isolated disposable environment, including concurrency, interruption and
+rollback; repeat idempotence checks, reboot/post-reboot and golden-image
+verification. CI on artificial fixtures is not this target validation.
+
+Local validation completed successfully (Bats 1.14.0):
+
+- Bash syntax checked separately for module and metadata; genuine Bats
+  preprocessing followed by Bash syntax checking succeeded.
+- Dedicated suite: TAP 1..69, 69 successes, 0 failures, 0 skips, exit 0.
+- 7.1.1–7.1.8 plus module_api/filesystem and direct-helper consumers
+  6.2.4.1/5.4.3.3: TAP 1..694, 694 successes, 0 failures, 0 skips, exit 0.
+- Complete suite: exactly 236 top-level Bats files covered once by eight
+  disjoint batches (manifest checked against every file); all eight exits 0,
+  summed plans 5099, 5097 executed successes, 0 failures, 2 inherited local
+  Unix-socket skips (6212 unexpected socket object and 62212 direct socket
+  helper). New 7.1.9 contributes 69 tests to the checkpoint's 5030 tests.
+  No test, skip condition or existing dependency was changed.
+- ShellCheck **0.9.0**: new module and metadata explicitly linted successfully,
+  and all 40 existing CI-scope lib/config/scripts/entrypoint files passed.
+  Existing workflow does not directly lint CIS module or metadata files;
+  this additional module lint is a local check, not a claim about CI coverage.
+- Diff whitespace check passed. Prior modules/tests, shared libraries,
+  workflows and CAS remain byte-for-byte unchanged. Authorized scope is
+  exactly module.sh, metadata.conf, dedicated Bats file and this status log.
+- No failed validation, implementation correction or test rerun was required.
+  Temporary inspection dependencies and fresh Ubuntu ShellCheck package were
+  prepared outside the repository; no runner system file was changed.
+
+The sole final commit must be a direct child of the checkpoint, published only
+after this validation with an unchanged-main lease. Exact commit/tree/compare
+and CI run/job results are necessarily reported externally after publication;
+this prepublication log does not assert a future CI result. Completion requires
+5099 CI successes, no failure or skip, successful ShellCheck 0.9.0, and exact
+SHA verification before declaring CIS 7.1.9 validated. Stop after this control.
