@@ -1905,3 +1905,206 @@ and CI run/job results are necessarily reported externally after publication;
 this prepublication log does not assert a future CI result. Completion requires
 5099 CI successes, no failure or skip, successful ShellCheck 0.9.0, and exact
 SHA verification before declaring CIS 7.1.9 validated. Stop after this control.
+
+## CIS 7.1.10 — opasswd observation, pinned CAS partial scope (2026-10-15)
+
+Exact CIS title: **Ensure permissions on /etc/security/opasswd are configured
+(Automated)**. RHEL9 CIS v2.0.0 mapping at CAS
+`a4b23038aaf65a25d6e88baa2800c03d09fda577`,
+`products/rhel9/controls/cis_rhel9.yml`: `l1_server`, `l1_workstation`,
+**status: partial**, sole selected rule `file_etc_security_opasswd`.
+XCCDF: `xccdf_org.ssgproject.content_rule_file_etc_security_opasswd`.
+CCE RHEL9 **CCE-86762-2**; RHEL10 **CCE-86980-0** is contextual only.
+
+Preimplementation decision **Option A**: implement only that selected CAS
+rule. The mapping TODO for `/etc/security/opasswd.old` is retained explicitly.
+A complete pin-wide search found separate `file_owner_etc_security_opasswd_old`,
+`file_groupowner_etc_security_opasswd_old` and
+`file_permissions_etc_security_opasswd_old` YAML/template rules. They specify
+0/0 and maximum 0600, are selected in other distributions' policies, carry
+RHEL8/RHEL10/SLE identifiers (no RHEL9 CCE in those YAMLs), but are NOT selected
+by this pinned RHEL9 7.1.10 mapping. Thus the TODO is stale in suggesting no
+rules exist anywhere, yet the mapping coverage gap is real. The combined
+selected rule's literal OVAL filepath is only `/etc/security/opasswd`, with no
+regex, recursion or old-file inclusion. No unverified normative RHEL9 CIS text
+was substituted for this baseline. No local extension or invented CAS rule,
+XCCDF or CCE is added. Compliance of opasswd never establishes compliance of
+opasswd.old. **RLCH implementation validation on partial CAS scope does not
+prove complete CIS 7.1.10 coverage.** The old path is deliberately not evaluated.
+
+### Operational source contract
+
+The selected YAML, descriptions, rationale, OCIL, shared macros and hand-written
+OVAL/Bash/Ansible sources were inspected directly at the pin and rendered with
+CAS's Jinja processor outside the repository. There is NO template/variable
+block, parameter selector, dedicated test directory, pass/fail fixture or
+per-rule policy directory for the combined selected rule at this pin. Generic
+file_owner/groupowner/permissions fixtures belong to the separate template
+rules; they do not override this hand-written OVAL. Existing RHEL9 CIS profile
+stability data selects the combined rule. CAS itself remains unchanged.
+
+OVAL `check_existence="all_exist"` requires the literal file to exist. Both
+file states together require **numeric UID 0, numeric GID 0, exact mode 0600**:
+owner read AND write true, all execute/group/other/special bits false, and
+**has_extended_acl=false**. No stricter-mode default applies to this hand-written
+rule: 0000, 0200 and 0400 are deficits, unlike the preceding subset policies.
+Description/OCIL specify 0600 but do not explain the explicit OVAL ACL state;
+there is no 0640/0600 source contradiction. The separate template rules for
+opasswd and opasswd.old use maximum 0600, a substantive difference that must
+not replace this selected exact-mode contract.
+
+Applicability is `package[pam]`; shared applicability maps RHEL to pam and
+Debian contexts to libpam-runtime. RLCH's RHEL-targeted read-only rpm query
+must succeed with exactly one `pam` record before each complete snapshot.
+Unavailable RPM, missing PAM or ambiguous/failed queries produce ERROR:
+unsupported/unproven applicability is not silently treated as compliant or
+classified as a package-installation deficit. This conservative behavior may
+differ from an OpenSCAP not-applicable result; package management is not part
+of this module. No repository refresh, NSS, network or package mutation occurs.
+Product-context renders for RHEL8/9/10, SLE15, SLMicro5, Fedora and Ubuntu24.04
+retain the literal combined check; applicability packaging and CCEs vary.
+Bash/Ansible remediation platform annotations are RHEL/Fedora/SLMicro and do
+not imply universal applicability or actual testing of other products.
+
+CAS Bash creates a missing file with touch, then pathname chown root:root and
+chmod 0600. Ansible uses file state touch, root/root/0600, preserving atime and
+mtime. Neither explicitly removes every extended ACL, although OVAL forbids
+extended ACLs; chmod may retain masked named entries. Neither is an inode-bound
+transaction with exact rollback. These sources were not executed on the host.
+
+### Observation and API
+
+`rlch_journal_path` and `rlch_tmout_directory` are reused unchanged. The generic
+`rlch_journal_mode` subset helper and journal ACL helper are deliberately not
+used for the exact-mode/no-extended-ACL criterion. The private stat validator
+carries forward 7.1.7/7.1.8 high raw-bit rejection for target AND absence parent.
+Paths must be canonical absolute paths without symlinks. The direct security
+parent must be readable/searchable with explicit read/search mode bits, even
+when privileged test execution could bypass mode 0000. Present objects must
+be regular, single-link and non-symlink. Device, inode, nlink, numeric UID/GID,
+octal mode, raw type/mode and nanosecond ctime are validated. Stat evidence
+rejects NUL/control/multirow/oversized output before Bash substitution, invalid
+bounded numeric fields, inconsistent raw/octal mode and high raw bits such as
+ffff8000 / ffff41ed. ctime validation checks its format, not calendar semantics.
+
+Each present snapshot brackets a metadata-only `getfacl -c -n -E -P` observation
+with two identical fully validated stat tuples. The ACL parser is bounded to
+65536 bytes/1024 records, rejects NUL/control/invalid/duplicate/incomplete
+records, accepts only canonical numeric named IDs, and checks base user/other
+and group-class mask permissions against stat. Three base ACL entries mean no
+extended ACL; ANY named entry or mask is extended, including masked or zero
+grants, and is a proven deficit when valid and stable. Default ACLs on a
+regular file, contradictory ACL/mode and missing/failing tools are ERROR.
+Two complete snapshots, including the ACL metadata stream, must then agree.
+No content hash or secret content read is used. Tool boundaries are injectable
+for fixtures; unavailable tools never cause the ACL requirement to be skipped.
+
+For missing opasswd, prove exact-name absence through an isolated glob and two
+matching validated parent tuples, repeated in two complete observations. A
+safe stable absence is NON_COMPLIANT under all_exist; missing/inaccessible or
+symlink parent, invalid evidence or appearance/removal/replacement is ERROR.
+No secret file is created. ERROR precedes all deficits. Canonicality and these
+observations reduce detectable races, not atomicity, hostile ABA immunity,
+namespace locking or a guarantee after the last observation. Parent atime may
+change from absence globbing; secret-file contents and atime are not read.
+
+check: fresh SUCCESS only for the selected criterion, NON_COMPLIANT for stable
+proven absence/UID/GID/exact-mode/extended-ACL deficit, otherwise ERROR.
+validate: complete fresh check, no cache. apply: fresh evaluation, SUCCESS if
+conforming, otherwise ERROR with bounded manual preservation/rotation/rollback
+guidance. rollback: silent repeatable SUCCESS no-op without resources.
+No CHANGED, automatic secret backup, file creation, attribute mutation, content
+copy/reconstruction or partial password-file restore is performed. Every
+check/apply diagnostic explicitly says CAS partial scope and opasswd.old not
+assessed; a SUCCESS is never presented as full CIS coverage. The scalar
+metadata uses the real selected XCCDF ID, accurately representing the one
+combined rule rather than an automatic manual fallback.
+
+Mutation was assessed against CAS and existing filesystem setters/backup/restore:
+pathname existence checks then chmod/chown/chgrp do not bind correction to the
+observed inode; sequential changes permit partial failure/interruption/crash,
+chown may clear capabilities/special bits, chmod may alter ACL masks while
+retaining named entries, and copy-based backups expose secrets and do not
+supply an atomic crash journal with exact ACL/xattr/SELinux/capability restore
+or protection from concurrent PAM history rotation. Exact original ctime cannot
+be restored by these APIs. Observation-only is retained; helpers are not
+changed. Other xattr/SELinux/capability policies, PAM contents, password reuse
+configuration, RPM verification and full benchmark coverage remain outside this
+module. Existing controls 7.1.1–7.1.9 and module API were reviewed and preserved.
+
+### Validation and target limits
+
+Tests use only an artificial root and read-only command fixtures that validate
+RPM/getfacl arguments; fixture ACL base entries are derived from actual POSIX
+mode, while production parsers/classification remain active. Only stat UID/GID
+normalization is used for portable fixture ownership; actual ownership cases
+remain. Extended/invalid ACL evidence, exact-mode deficits including zero-mode
+body preservation via independent preopened descriptors, package/tool failures,
+all stat tuple transitions, safe/ambiguous absence, links/types, content and
+account-neighbor preservation, API freshness/idempotence, redaction and old-file
+scope exclusions are covered. No host password file or package state is used.
+
+Real Rocky Linux 10.2 testing is still required: OS/RPM/PAM/acl/coreutils versions,
+actual getfacl and GNU stat/awk/realpath compatibility, PAM/pam_pwhistory creation
+and rotation of opasswd, possible opasswd.old and its separate coverage, extended
+metadata/SELinux/capabilities, pinned OpenSCAP comparison including absence and
+applicability divergences, isolated remediation/restoration and interruption
+experiments, second-run idempotence, reboot/post-reboot and golden-image checks.
+Fixture CI is not real target validation. Stop after CIS 7.1.10.
+
+Checkpoint verified before any implementation: clean local HEAD/origin/main
+and GitHub main `bdcee603f862b8adee0d6b596c709fc3a3b5d418`, initial tree
+`ea8e57ac5b35f1372e8b9a21271b5045a798bd90`, previous parent
+`e1b12a06fc4e00c95acf704fd5f615c472147ed3`, message
+`feat(cis): implement CIS 7.1.9 stable shells attribute observation`.
+CI 289 / run 38711866590 / attempt 1 and both jobs were reverified successful:
+Bats 116344930615 TAP 1..5099, 5099 successes/0 failures/0 skips;
+ShellCheck 116344930477 version 0.9.0. Publication will recheck main and use
+an unchanged-checkpoint non-forced ref lease, with one direct-child final commit.
+
+Validation incidents and correction: first dedicated run had one failing test
+(the parent-tuple transition fixture reused its call counter across all three
+APIs, so later APIs correctly saw a stable changed parent). The fixture now
+resets that counter independently before check/validate/apply, requiring each
+to detect the transition. No production correction or weakened expectation was
+needed. Full dedicated rerun: 91/91 successes, no failures or skips.
+
+Additional native ACL experiment used extracted getfacl/setfacl **2.3.2** on
+an artificial disposable history file only, with the PAM package query still
+simulated. The first named UID 123 was rejected with EINVAL by this container's
+single-ID user namespace (`uid_map` and `gid_map` map only ID 0). Rerunning
+with a mapped named UID 0 succeeded: base ACL 0600 SUCCESS, named zero grant
+NON_COMPLIANT, chmod 0600 still NON_COMPLIANT, apply ERROR without change,
+ACL removal restores SUCCESS, exact-mode 0400 NON_COMPLIANT, stable absence
+NON_COMPLIANT, inaccessible parent ERROR. Artificial body hash was preserved;
+no real history file was read. Temporary native tooling did not alter project
+dependencies or the runner's installed packages. This is additional local
+ACL integration evidence, not a claim that CI installs ACL tooling or that
+RHEL/PAM applicability has been verified on this container.
+
+Final local validation (Bats 1.14.0, ShellCheck 0.9.0):
+
+- Bash syntax checked separately for module and metadata; genuine Bats
+  preprocessing and Bash syntax checking passed for the final dedicated file.
+- Dedicated corrected suite: TAP 1..91, 91 successes, 0 failures, 0 skips.
+- Regressions 7.1.1–7.1.9 plus module_api/filesystem and direct-helper consumers
+  6.2.4.1/5.4.3.3: TAP 1..763, 763 successes, 0 failures, 0 skips, exit 0.
+- Complete suite: all 237 top-level Bats files covered once in eight disjoint
+  batches, manifest checked against every file, all eight exits 0. Summed TAP
+  plans 5190 = prior 5099 + 91 new tests. 5188 executed successes, 0 failures,
+  2 inherited local socket skips, no added/changed skip condition. Expected CI
+  execution must pass all 5190 with no skip before implementation validation.
+- New module and metadata explicitly linted by ShellCheck 0.9.0 successfully;
+  the existing 40-file lib/config/scripts/entrypoint CI scope also passed.
+  The unchanged CI workflow does not directly lint CIS modules/metadata;
+  explicit new-file lint is local additional evidence.
+- git diff --check passed; preceding modules/tests, libraries, workflows and
+  pinned CAS are unchanged. Exactly the four authorized files are selected.
+
+One final direct-child commit only; tested implementation and reviewed status
+log must produce the same local/API tree before publication. Final SHA/tree,
+compare, exact-SHA CI run/attempt, job/log/TAP and final clean refs must be
+reported externally after publication, without a self-referential follow-up
+commit. No statement here predicts a completed CI result. The required final
+qualification remains: **CIS 7.1.10 — Implémentation RLCH validée sur périmètre
+CAS partiel ; couverture complète non démontrée**, only once final CI succeeds.
