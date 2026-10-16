@@ -2358,3 +2358,258 @@ namespace or a host outside a container/chroot. Confirm the intended system
 namespace and the deployed OpenSCAP engine on the real Rocky target. The
 implementation does not assert an atomic global filesystem snapshot, full
 all-filesystem coverage or completed Rocky Linux 10.2 production validation.
+
+## CIS 7.1.12 — partial pinned OVAL orphan-identity audit (2026-10-16)
+
+### Authorization and normative scope
+
+Explicit user authorization extends this control to exactly eight paths: the
+module/metadata, dedicated CIS Bats suite and this status file, plus new
+lib/filesystem_observation.sh, lib/identity_observation.sh and their two Bats
+suites. No historical module/test/helper, mount/account library, framework,
+workflow or CAS source is modified. No ninth file or subsequent control.
+
+Immutable checkpoint: 0d009469a20a3d4d5a87cff8fa11c4d6c77f9214;
+tree 5e90610951f6a13e0f323d9e2360e0fb61b00354;
+parent 20e29fcb268b603db5de78392a508265942c3433.
+HEAD/origin/main/GitHub main/tree agree and working tree was clean before
+implementation. CI291/run38879810376/attempt1 completed/success on that SHA;
+Bats logs plan1..5278, zero failures/skips; ShellCheck0.9.0 success.
+One final direct-child commit and exact-SHA green CI remain mandatory.
+
+Option A is authorized: CIS RHEL9 v2.0.0, ComplianceAsCode/content pin
+a4b23038aaf65a25d6e88baa2800c03d09fda577, mapping
+products/rhel9/controls/cis_rhel9.yml, 7.1.12, l1_server/l1_workstation,
+status=partial, TODO for directories. The only selected rules are:
+
+- xccdf_org.ssgproject.content_rule_no_files_unowned_by_user; CCE-83896-1.
+- xccdf_org.ssgproject.content_rule_file_permissions_ungroupowned; CCE-83906-8.
+
+Full XCCDF names follow OSCAP_VENDOR/OSCAP_RULE in ssg/constants.py at the
+same pin, and selected rule directory IDs; no generated datastream or target
+OpenSCAP evaluation is claimed. Metadata OPENSCAP_RULE=manual because the
+existing scalar cannot represent both primary rules.
+
+Inspected each rule.yml (description, OCIL, warnings, identifiers, fixtext),
+oval/shared.xml, sce/shared.sh and all fixtures; expanded criteria by reading
+shared/macros/10-oval.jinja (create_local_mount_points_list,
+oval_test_nsswitch_uses_altfiles, package test) and 10-sce.jinja. There are no
+Bash/Ansible remediation files or rule templates/extra XCCDF variables for
+these two rules. Fixtext is documentary; no source fixture or remediation is
+executed. Relevant alternative no_files_or_dirs_* rules exist at this pin but
+are not selected by this RHEL9 mapping and are not imported.
+
+Both OVAL file objects have non-nil filename not-equal-to '/': directories
+are not assessed. This does not mean only regular files: no type filter
+excludes symlinks/FIFOs/devices/sockets. Numeric lstat ownership of all observed
+non-directories is assessed; symlinks are not followed. As a supplemental
+engine cross-check, OpenSCAP1.3.10 src/OVAL/probes/oval_fts.c distinguishes
+collect_dirs by nil filename, and src/OVAL/probes/unix/file_probe.c uses lstat.
+That cross-check does not replace the CAS pin or prove the deployed Rocky RPM.
+
+OVAL owner criterion filters known user_id values from unix:password_object
+username pattern '.*'; absence of an arbitrary getpwuid lookup is not used.
+OVAL group criterion uses numeric GIDs extracted from /etc/group. It adds
+/usr/lib/group only when BOTH the CAS nsswitch group capture substring
+'altfiles' and installed nss-altfiles RPM criteria hold. The literal CAS
+substring test also sees inline comments; this surprising behavior is retained
+and tested. Group NSS/SSSD/LDAP recognition does not replace this local-base
+criterion. Missing/malformed/inaccessible required evidence is ERROR, not an
+empty set of identities or a proven missing package.
+
+Both OVAL scopes select mount filesystem sources matching ^/dev/.*$, using
+mount_inventory source rather than filesystem type/MAJ:MIN alone. Read-only
+and /dev-backed distributed volumes remain selected; ordinary tmpfs/proc/
+overlay/host:/share sources do not. SCE's different mount selection and /tmp
+on tmpfs addition are not imported. Group filepath filter ^/sysroot/.*$ applies
+only to the group rule; no matching owner exclusion exists. Newline-bearing
+source matches or group-exception paths with unproved PCRE semantics fail
+ERROR conservatively. No unrelated /selinux exceptions are imported.
+
+### Generic filesystem observation contract
+
+The new library sources the existing mount inventory API without changing it.
+rlch_fs_observe ROOT MOUNTINFO SELECTOR VISITOR separates mechanism from
+policy: SELECTOR gets inventory array/index (0 include,1 exclude,other ERROR),
+VISITOR gets a validated stable tuple array and physical-root prefix. The CIS
+module alone selects /dev sources and evaluates identity membership/exclusions.
+Callbacks execute in the caller shell, are trusted and must not mutate the
+observation arrays. API returns0/2, no stdout, with a bounded public error
+category (root/inventory/selection/empty_selection/device/traversal/
+inventory_changed/metadata_changed/visitor). Neither callbacks nor library
+are an API for consuming arbitrary untrusted shell code.
+
+Independent canonical-directory and dev_t checks precede/follow each mount.
+GNU find -P -xdev transports ten NUL fields per object: path,type,device,inode,
+nlink,UID,GID,octal mode,ctime,depth. Root tuple device must agree with the
+inventory as well. Every descendant mount is explicitly pruned with escaped
+literal path patterns, including excluded and same-device bind mounts;
+selected descendants are traversed separately even below excluded parents.
+The mount ID/root/parent distinctions are retained in the inventory.
+
+Each selected traversal is repeated and exact ordered metadata tuples compared;
+inventory is compared between passes and after all selected mounts. Root and
+traversed directories must be readable/searchable. Producer exit failures,
+stderr even with zero status, missing final NUL/trailer, partial tuples,
+duplicate paths, bad numeric/type/range fields, resource caps and observable
+metadata/mount changes invalidate the entire result, even after a deficit.
+No ignore_readdir_race, ignored subprocess status or partial-stream SUCCESS.
+
+Limits: inventory API's existing4096 mounts/4MiB; walk100000 tuples/64MiB per
+pass,4096-byte fields,depth1024; aggregate200000 observations across all passes.
+Paths stay in bounded memory, not temporary files; full arrays/duplicate maps
+carry additional memory overhead beyond raw transport size. No wall-clock
+completion bound is asserted for a blocked filesystem. A busy/large host may
+return ERROR and needs real performance measurements. Different readdir order
+fails conservatively. Empty selection/file-mounted selected roots are ERROR.
+
+This generic contract derives relevant transport/frontier techniques from
+7.1.11, refactored into selection/visitor-independent APIs with additional
+framing/device validation. No complete private policy module is copied or
+sourced; 7.1.11 remains unchanged and is regression-tested. Migration of older
+private traversal to this new API is outside this authorization.
+
+### Generic identity observation and supported completeness boundary
+
+rlch_identity_rows PATH passwd|group|nss provides bounded non-secret
+projections; it does not decide CIS policy or claim external NSS completeness.
+passwd/group output numeric IDs only; nss output the two relevant source
+captures. Descriptor inode/size/mode/UID/GID/mtime/ctime evidence is compared
+before/open/after. Bases must be regular, readable, canonical, without symlink
+ancestors, not group/other-writable, owned by root or the observing effective
+user. UID/GID values are bounded to0..4294967294; numeric aliases are legitimate,
+duplicate names/unsupported records fail conservatively. Projections do not
+emit names, password fields or group members; shadow/gshadow are never opened.
+
+Limits:4MiB input,65536 lines,16384-byte lines,2048-byte NSS source capture.
+A trailer proves newline framing; NUL/control bytes, missing final newline,
+empty required sets, ambiguous keys, producer stderr/nonzero and observable
+replacement/mutation produce ERROR without partial output. Identity reads can
+update account-file atime; no explicit metadata/content mutation occurs.
+
+The MODULE, not the library, accepts only an explicit files-only passwd NSS
+source (with ordinary whitespace/inline comments) as the supported proof of
+local enumeration completeness. It compares complete projected identities,
+configuration and file stamps around the entire filesystem scan. NSS source
+fallbacks/actions, compat, systemd, SSSD, LDAP, NIS or other external passwd
+providers currently return ERROR, even if getent succeeds or all presently
+observed file owners happen to be local. There is no claim to support a
+complete external-directory probe, nor a misleading equivalence on those
+hosts. A symlink-based authselect nsswitch configuration is also currently
+unsupported and returns ERROR; no authselect/SSSD configuration is changed.
+
+CAS warns about getent passwd enumeration and SSSD enumerate=true; neither
+setting nor successful enumeration alone proves completeness/service health.
+Supplemental glibc nss/getent.c inspection confirms the unkeyed passwd path
+returns its zero result after getpwent stops, whereas keyed lookup maps a NULL
+result to2; this is insufficient to distinguish all absence/outage cases.
+Individual lookup and enumeration are therefore not silently interchanged.
+No getent, SSSD/network/service operation is invoked by this implementation.
+
+For groups, the module uses the local-base OVAL set even when group NSS names
+additional external providers. RPM applicability uses existing
+rlch_rpm_package_status and its complete stable inventory contract. RPM errors
+or an empty/unreadable database are not evidence of package absence. Altfiles
+bases/conditions are freshly reobserved after the filesystem scan.
+
+### Result semantics and limitations
+
+check/validate perform fresh full supported-scope evaluations:0 only after
+all evidence is complete/stable with no orphan,1 only for a proved deficit
+with complete/stable scope,otherwise2. UID and GID membership are evaluated
+separately (logical OR of deficits). apply repeats evaluation:0 if criteria
+hold,otherwise2 with manual application-ownership/evidence/restoration guidance.
+rollback is silent repeatable0. No CHANGED, chown/chgrp, identity edits,
+backups, transaction state or global remediation. Diagnostics are fixed,
+bounded and omit paths/IDs/content.
+
+These are double observations of the visible namespace, not an atomic global
+snapshot. Transient ABA changes, omitted evidence fabricated by an untrusted
+producer, hidden/overmounted filesystems or another namespace cannot be proved
+absent. Permissions/SELinux, unusual valid records and conservative input
+bounds can yield ERROR. ROOT/MOUNTINFO/RPM injection is a trusted test boundary;
+production use must evaluate the actual intended host root/current namespace,
+not treat an artificial prefix and host RPM database as offline certification.
+
+Full CIS7.1.12 conformity is NOT demonstrated: directories remain uncovered;
+external owner enumeration, deployed OpenSCAP engine equivalence and real
+Rocky Linux10.2 validation remain separate. On supported local files-only
+configurations the module evaluates the specified partial CAS OVAL criteria.
+
+### Verification record
+
+Dedicated fixtures use actual GNU find on artificial trees with injected
+inventory and narrowly targeted metadata/identity/RPM faults. No real runner
+root scan, account changes, source fixture execution or new skip. Cases cover
+owner-only/group-only/both deficits; non-directory types; altfiles and complete
+RPM observations; incomplete/failed NSS; zero-return external enumeration;
+file/group/source mutation; malformed/truncated evidence and resource limits;
+bind/nested/excluded mounts; arbitrary bytes; error precedence; fresh APIs;
+no content mutation/file-atime changes; redacted diagnostics and silent rollback.
+
+Prepublication corrections: initial missing AWK closing quote; genuine Bats
+preprocessing found inline mock declarations on test headers, which were moved
+to separate lines; scoped lint annotations for Bats subshell isolation and
+public nameref/error outputs; a test-local rm mock affected Bats cleanup despite
+all assertions passing, so all mutation mocks are explicitly unset before the
+test exits. Root tuple dev_t checks and bounded unsigned numeric validation
+were strengthened before the final lock. No provisional commit is published.
+
+Final validation counts and exact-SHA CI are recorded after the locked source
+checks below; commit/tree/run identifiers are verified externally because a
+commit cannot self-record its own SHA without requiring another commit.
+
+Final local validation on the final sources:
+
+- Dedicated suites: filesystem45/45 (rerun after final stat-stderr redaction),
+  identity37/37 and CIS7.1.12 53/53;135 cases, no failure/skip. The preceding
+  combined134-case run exited0; final full suite independently covers all135
+  current cases. Production code/test hashes were locked and verified before
+  and after the full suite; the final stat-redaction change does not alter any
+  historical consumer (none sources this new library).
+- Historical focused regressions:48 files, four disjoint batches with plans
+  313/302/295/362, all exits0;1272 successes,0 failures,0 skips. Includes all
+  CIS7.1.1 through7.1.11, historical1.1 mount consumers, module_api,
+  filesystem and mount_inventory tests.
+- Complete suite:242 top-level Bats files, each covered exactly once across
+  eight disjoint batches31/31/30/30/30/30/30/30. Plans717/654/573/718/602/717/
+  685/747 sum to5413 (=5278 baseline+135 new). Every batch exits0;
+  5411 successes,0 failures,exactly2 inherited local Unix-socket skips:
+  6.2.1.2 unexpected socket object and6.2.2.1.2 direct socket helper. No skip
+  condition/dependency/workflow changed. Exact-SHA CI must execute both.
+- Bash syntax for all four production Shell files; genuine Bats preprocessing
+  then Bash syntax for all three new test files:PASS.
+- ShellCheck0.9.0 directly covers all seven new Shell/Bats files:PASS.
+  The unchanged CI workflow automatically includes the two new libraries,
+  expanding its actual inputs from40 to42, all separately linted locally:PASS.
+  It does not directly lint CIS modules/metadata or Bats; local extra coverage
+  is distinguished from workflow coverage. No workflow change is required.
+- New suites reside directly under tests/ and are automatically discovered by
+  the unchanged bats tests command. Whitespace/index diff checks pass.
+  Exactly eight allowed files; all historical code/tests, workflows, helper
+  libraries and CAS sources remain unchanged. No source/body files on the
+  actual runner are used as orphan-account fixtures or modified by this work.
+
+Final stat-diagnostic review added one test (filesystem44->45) and suppressed
+raw root-stat stderr in the generic library before the complete regression
+run. This changed no CIS policy or historical implementation. No full-suite
+rerun is required after these final results: only this documentation record is
+appended, then final tree/parent/compare and exact-SHA CI are checked externally.
+No intermediate commit, force push or ninth file is authorized or used.
+
+Required real Rocky Linux10.2 validation remains outstanding: GNU tools and
+OpenSCAP RPM/version/engine semantics, actual files-only NSS and authselect
+configuration, explicitly unsupported SSSD/LDAP/systemd/compat cases returning
+ERROR, local accounts/group aliases, installed/absent nss-altfiles with real
+RPM evidence, actual symlinks/devices/sockets, nested/bind/read-only/network
+/dev-backed mounts and intended host namespace, resource/performance bounds,
+permissions/SELinux, comparisons of the two exact primary OpenSCAP rules versus
+SCE differences, interruption/identity churn, repeatable idempotence,
+reboot/post-reboot and golden-image checks. Any future remediation/restoration
+experiment must remain isolated and separately authorized; this module cannot
+perform automatic ownership changes or test a nonexistent rollback journal.
+
+Conclusion after exact-SHA green CI: RLCH implementation validated only for
+the supported partial pinned CAS OVAL scope. Full CIS7.1.12 conformity remains
+NOT demonstrated, notably for directories and unproved external enumeration.
+STOP after7.1.12. Do not start7.1.13.
