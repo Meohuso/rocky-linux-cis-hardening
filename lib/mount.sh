@@ -781,3 +781,113 @@ mount_rollback() {
 
     return "${RLCH_MODULE_RESULT_CHANGED}"
 }
+
+# Read-only inventory API, additive: historical mount APIs remain unchanged.
+# mount_inventory ARRAY [MOUNTINFO=/proc/self/mountinfo]
+# ARRAY must be a caller-owned writable indexed array (not _rlch_mi_*).
+# Success=0, error=2 with ARRAY empty; stdout is always empty. Ten fields per
+# record, sorted by numeric mount ID: ID PARENT MAJ:MIN ROOT TARGET SOURCE
+# FSTYPE VFS_OPTIONS FS_OPTIONS OPTIONAL_FIELDS. Empty OPTIONAL_FIELDS is valid.
+# Names are byte strings, not lines; kernel escapes 040/011/012/134 only are
+# decoded once. Producer framing uses NUL and an explicit trailer/count.
+# Limits: 4096 records, 16384 bytes/line, 4 MiB input. Empty, incomplete graph,
+# duplicate/stacked target, cycle, unknown optional field or malformed evidence
+# fails closed. Root parent may be outside this namespace (or root itself).
+# No mount, findmnt, fstab write, path traversal, content read or NSS query.
+_mount_inventory_stream() {
+    LC_ALL=C /usr/bin/cat -- "$1"
+}
+_mount_inventory_frame() (
+    set -o pipefail
+    { _mount_inventory_stream "$1" && printf '%s\n' RLCH-MOUNTINFO-END; } | LC_ALL=C /usr/bin/awk '
+        function bad() {invalid=1;exit 2}
+        function uint(s,zero) {return s ~ /^(0|[1-9][0-9]*)$/ && length(s)<=10 && s+0<=4294967294 && (zero || s!="0")}
+        function decode(s, i,c,e,out) {
+            out=""
+            for(i=1;i<=length(s);i++) {
+                c=substr(s,i,1)
+                if(c=="\\") {
+                    e=substr(s,i+1,3)
+                    if(e=="040") c=" "
+                    else if(e=="011") c="\t"
+                    else if(e=="012") c="\n"
+                    else if(e=="134") c="\\"
+                    else bad()
+                    i+=3
+                }
+                out=out c
+            }
+            return out
+        }
+        function path(s) {return substr(s,1,1)=="/" && (s=="/" || (s !~ /\/$/ && s !~ /\/\// && s !~ /\/(\.|\.\.)(\/|$)/))}
+        {
+            if($0=="RLCH-MOUNTINFO-END") {if(ended) bad();ended=1;next}
+            if(ended) bad()
+            bytes+=length($0)+1
+            if(bytes>4194304 || length($0)>16384 || NR>4096 || index($0,sprintf("%c",0)) || index($0,"\t")) bad()
+            if(!uint($1,0) || !uint($2,1) || seen[$1]++ || split($3,dev,":")!=2 || !uint(dev[1],1) || !uint(dev[2],1)) bad()
+            sep=0
+            for(i=7;i<=NF;i++) if($i=="-") {sep=i;break}
+            if(!sep || sep+3!=NF || $6=="" || $(sep+1)=="" || $(sep+2)=="" || $(sep+3)=="") bad()
+            if($6 !~ /^(ro|rw)(,|$)/ || $(sep+3) !~ /^(ro|rw)(,|$)/) bad()
+            root=decode($4);target=decode($5)
+            if(!path(root) || !path(target) || targets[target]++) bad()
+            id=$1; ids[++n]=id; parent[id]=$2; targetof[id]=target
+            if(target=="/") {rootid=id;roots++}
+            optional=""
+            for(i=7;i<sep;i++) {
+                if($i!="unbindable") {
+                    if(split($i,part,":")!=2 || part[1] !~ /^(shared|master|propagate_from)$/ || !uint(part[2],0)) bad()
+                }
+                key=$i; sub(/:.*/,"",key)
+                if(opts[id SUBSEP key]++) bad()
+                optional=optional (optional=="" ? "" : " ") $i
+            }
+            record[id,1]=id;record[id,2]=$2;record[id,3]=$3;record[id,4]=root;record[id,5]=target
+            record[id,6]=decode($(sep+2));record[id,7]=$(sep+1);record[id,8]=decode($6)
+            record[id,9]=decode($(sep+3));record[id,10]=optional
+        }
+        END {
+            if(invalid || !ended || !n || roots!=1) exit 2
+            for(i=1;i<=n;i++) {
+                id=ids[i];p=parent[id];t=targetof[id]
+                if(id==rootid) {if(p in seen && p!=id) exit 2}
+                else {
+                    if(!(p in seen) || p==id) exit 2
+                    pt=targetof[p]
+                    if(pt!="/" && substr(t,1,length(pt)+1)!=pt "/") exit 2
+                    for(k=1;k<=n;k++) {
+                        candidate=targetof[ids[k]]
+                        if(ids[k]!=id && length(candidate)>length(pt) && substr(t,1,length(candidate)+1)==candidate "/") exit 2
+                    }
+                }
+            }
+            # Canonical order independent of kernel row order; bounded N^2.
+            for(i=1;i<=n;i++) for(j=i+1;j<=n;j++) if(ids[j]+0<ids[i]+0) {v=ids[i];ids[i]=ids[j];ids[j]=v}
+            printf "RLCH-MOUNTS-1%c",0
+            for(i=1;i<=n;i++) for(j=1;j<=10;j++) printf "%s%c",record[ids[i],j],0
+            printf "END%c%d%c",0,n,0
+        }
+    '
+)
+mount_inventory() {
+    local _rlch_mi_name="${1:-}" _rlch_mi_path="${2:-/proc/self/mountinfo}"
+    local _rlch_mi_fd _rlch_mi_pid _rlch_mi_result=0 _rlch_mi_count _rlch_mi_size
+    local -a _rlch_mi_frame=()
+    [[ "$_rlch_mi_name" =~ ^[a-zA-Z_][a-zA-Z_0-9]*$ && "$_rlch_mi_name" != _rlch_mi_* ]] || return 2
+    local -n _rlch_mi_out="$_rlch_mi_name"
+    _rlch_mi_out=()
+    exec {_rlch_mi_fd}< <(_mount_inventory_frame "$_rlch_mi_path" 2>/dev/null)
+    _rlch_mi_pid=$!
+    mapfile -d '' -t _rlch_mi_frame <&"$_rlch_mi_fd" || _rlch_mi_result=2
+    exec {_rlch_mi_fd}<&-
+    wait "$_rlch_mi_pid" || _rlch_mi_result=2
+    [[ "$_rlch_mi_result" == 0 ]] || return 2
+    _rlch_mi_size=${#_rlch_mi_frame[@]}
+    (( _rlch_mi_size>=13 )) || return 2
+    _rlch_mi_count="${_rlch_mi_frame[_rlch_mi_size-1]}"
+    [[ "${_rlch_mi_frame[0]}" == RLCH-MOUNTS-1 && "${_rlch_mi_frame[_rlch_mi_size-2]}" == END &&
+       "$_rlch_mi_count" =~ ^[1-9][0-9]{0,3}$ ]] || return 2
+    (( _rlch_mi_count<=4096 && _rlch_mi_size==_rlch_mi_count*10+3 )) || return 2
+    _rlch_mi_out=("${_rlch_mi_frame[@]:1:_rlch_mi_size-3}")
+}

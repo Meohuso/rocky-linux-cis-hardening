@@ -2108,3 +2108,253 @@ reported externally after publication, without a self-referential follow-up
 commit. No statement here predicts a completed CI result. The required final
 qualification remains: **CIS 7.1.10 — Implémentation RLCH validée sur périmètre
 CAS partiel ; couverture complète non démontrée**, only once final CI succeeds.
+
+## CIS 7.1.11 — world-writable eligible-filesystem audit (2026-10-16)
+
+User explicitly authorized six files for this control only: additive lib/mount.sh,
+new tests/mount_inventory.bats, module 7/1/11 metadata/module, dedicated Bats and
+this log. No historical function, module, test or workflow behavior is changed.
+Checkpoint reverified before editing: local HEAD/origin/main and GitHub main
+20e29fcb268b603db5de78392a508265942c3433, tree
+08674055fe2edd6209d93fc178920615f6727e8c, parent
+bdcee603f862b8adee0d6b596c709fc3a3b5d418. Clean worktree; CI 290 /
+38716994454 / attempt 1 and jobs 116362009189 (Bats) / 116362008798
+(ShellCheck) successful, TAP 1..5190 with 5190 successes/0 failures/0 skips,
+ShellCheck 0.9.0. Publication requires a fresh unchanged-checkpoint lease.
+
+### Normative scope and source distinctions
+
+Exact title: Ensure world writable files and directories are secured (Automated).
+CIS RHEL9 v2.0.0, CAS pin a4b23038aaf65a25d6e88baa2800c03d09fda577,
+products/rhel9/controls/cis_rhel9.yml, status automated, l1_server/l1_workstation.
+
+| Exact primary XCCDF | RHEL9 CCE | RHEL10 contextual CCE | Deficit |
+|---|---|---|---|
+| xccdf_org.ssgproject.content_rule_file_permissions_unauthorized_world_writable | CCE-83902-7 | CCE-87656-5 | Regular file with other-write (0002), unless exact file exception |
+| xccdf_org.ssgproject.content_rule_dir_perms_world_writable_sticky_bits | CCE-83895-3 | CCE-88397-5 | Directory with other-write and without sticky (01000) |
+
+The two YAMLs, hand-written OVAL, OCIL, descriptions/rationales/warnings,
+Bash/SCE and available Ansible, fixtures, sticky-directory STIG shared/RHEL10
+policies, create_local_mount_points_list, find_command/find_files/find_directories
+and ansible_create_list_of_local_paths macros were examined at this unchanged
+pin. Prior study rendered RHEL9/RHEL10/RHCOS4/Ubuntu24.04/SLE15 variants at the
+same pin; pinned sources were rechecked on resumption. These two rules have no
+rule.yml template/variable selector overriding the literal OVAL criteria.
+
+RLCH adopts the **RHEL9 OVAL** scope explicitly: partition device matches
+^/dev/.*$, recursive directory traversal with recurse_file_system=defined,
+all selected mount points assessed separately, and no transition into any
+other mount during that traversal. This is CAS's operational definition of
+eligible, not an assertion that every physically local filesystem is selected.
+The macro explicitly includes distributed storage when presented as a /dev
+source (e.g. RBD/CEPH); it is not an arbitrary network-fstype denylist. Ordinary
+NFS/CIFS sources, tmpfs, overlay and pseudo sources not matching /dev are
+outside this OVAL scope. Read-only selected mounts are still assessed: ro is
+not an OVAL exemption. There are no RPM-owned/application exception selectors.
+
+Files alone exclude ^/sysroot/.*$ and exact /selinux/member, user, relabel,
+create, access, context. Directories have NO equivalent sysroot exclusion.
+No RHCOS-specific container/kubelet/ostree OCIL exclusions are imported.
+The arbitrary-byte paths are retained. For newline-bearing world-writable
+exception paths (sysroot/selinux) or /dev source strings, engine regex-anchor
+semantics cannot safely be replaced by a shell wildcard: return ERROR rather
+than silently widen exclusions or classify an uncertain finding. The supported
+ordinary-byte exception matches retain the exact CAS paths, not prefixes for
+similarly named selinux files. This explicit limitation prevents a false global
+conformity claim; runtime probe comparison remains required for such cases.
+
+SCE differs: /proc/filesystems nodev type selection via findmnt, explicit tmpfs
+/tmp addition, newline-delimited discovery/results and process substitutions
+that do not reliably propagate find errors. File Bash uses a similar selection
+plus a broader sysroot grep exclusion; sticky Bash uses df --local. Sticky
+Ansible has its own excluded filesystem/path lists and localhost-NFS handling.
+These are NOT substituted for the chosen OVAL mount/exclusion contract. The
+build also enables SCE for RHEL products, so comparison must identify which
+engine was evaluated. Ubuntu24.04 suppresses the file OVAL; RHCOS changes OCIL
+and fixtext; CCEs and remediation platform annotations differ by distribution.
+A file's sticky bit does not excuse world-write. Other suid/sgid/sticky bits
+are not forbidden by these criteria. Hardlinks are assessed under each visible
+eligible name; multiple links alone are not a finding. Symlinks and special
+objects are not regular-file/directory permission findings. Extended/named ACL
+grants are not an independent criterion here; no opasswd ACL policy is imported.
+
+### Additive mount inventory API
+
+mount_inventory ARRAY [MOUNTINFO=/proc/self/mountinfo] writes a caller-owned
+writable indexed Bash array only upon success (0); ERROR (2) leaves it empty.
+stdout is empty. Ten fields per record, numerically sorted by mount ID:
+ID, PARENT, MAJ:MIN, ROOT, TARGET, SOURCE (the mountinfo filesystem device/source
+used for the literal /dev selection), FSTYPE, VFS_OPTIONS, FS_OPTIONS,
+OPTIONAL_FIELDS. The last field can be empty. Input must be trusted kernel
+mount metadata or an explicit artificial fixture, never an audit-file body.
+No findmnt, mount, fstab changes, NSS or target-file content reads occur.
+
+Private producer uses a NUL field frame with version, trailer and count.
+The consumer captures the producer PID and explicitly waits after reading its
+FD; pipefail preserves metadata-source errors. No process-substitution exit
+status is discarded. No eval or line-delimited decoded path transport is used.
+Only kernel escapes 040/011/012/134 are decoded, once; invalid/truncated escapes
+and NUL are errors. Raw nonseparator control bytes and non-UTF8 bytes in names
+are preserved; a raw tab separator is invalid (kernel must encode name tabs).
+Absolute ROOT/TARGET paths cannot have dot segments, doubled/trailing slash.
+
+IDs/parents and device numbers must be canonical bounded unsigned integers;
+unique IDs and targets, one namespace root, known parents for non-root mounts,
+strict target ancestry and recognized propagation fields are validated. Root's
+parent may be external or itself. Cycles, incompatible ancestry, duplicate /
+stacked targets, missing fields/graph or unknown future propagation tags are
+ERROR. A clipped/stacked/unsupported namespace is not silently flattened.
+Bind roots and parent IDs remain distinct even for identical MAJ:MIN. Limits:
+4096 records, 16384 bytes per raw row, 4 MiB input; exceeding any is ERROR.
+Ordering uses bounded quadratic numeric-ID sorting; high-mount-count namespaces
+can cost more. Inventory is metadata evidence, not an atomic namespace lock;
+omissions fabricated by an untrusted provider cannot be proven absent.
+
+Existing public mount functions remain byte-for-byte unchanged; their older
+name/escape limitations are not silently altered. New consumers use the new
+API. Existing result constants remain authoritative; the new API explicitly
+uses its independent 0/2 success/error contract. No new external dependency:
+Bash arrays/namerefs, GNU coreutils/findutils and awk already present in the
+project/CI. Local tools observed: util-linux 2.39.3, GNU findutils 4.9.0;
+production Rocky versions still require compatibility validation.
+
+### Scan architecture and guarantees
+
+Only selected mount roots are canonicalized and metadata-verified, without
+opening their contents. Root stat validates raw Linux type bits and readable /
+searchable directory mode and checks actual dev_t major/minor against inventory.
+Invalid/NUL/high-bit stat evidence is rejected before Bash substitution.
+Unsupported selected file mounts fail ERROR rather than being omitted.
+Zero eligible mounts is ERROR, never a vacuous assertion of global conformity.
+
+GNU find -P -xdev transports ten NUL fields per object: path, type, device,
+inode, nlink, UID, GID, octal mode, ctime and depth. Every descendant mount
+(selected OR excluded) is explicitly pruned, with literal pattern escaping;
+same-device bind mounts therefore cannot bypass -xdev boundaries. Selected
+children get their own complete traversal, including below an excluded parent.
+Symlinks are never intentionally followed. Canonical root checks are also NUL
+framed, preserving names ending in newline. Filesystem errors, interrupted find,
+invalid/incomplete/duplicate records, inaccessible directories and mismatched
+devices are ERROR, even if earlier metadata proves a permission deficit.
+No ignore_readdir_race, ignored producer status or success after timeout occurs.
+
+Each selected root is traversed twice. Complete metadata streams must match,
+with a matching inventory between traversals; the selected root device is
+checked before/after. Initial and final inventories must also agree. Limits:
+100000 objects and 64 MiB per mount stream, depth 1024; aggregate evaluation
+budget 200000 object observations across the two-pass scans. Limit exhaustion
+always returns ERROR. Metadata lives in bounded Bash arrays, not temporary
+files with sensitive names/content. A large host may exceed these bounds and
+cannot receive SUCCESS; scalability must be measured on the real target.
+
+This detects observed creation/removal/replacement, tuple or mount changes,
+but is not an atomic snapshot: changes after a scan, transient ABA changes or
+changes reverted between observations may escape detection. Stable readdir
+order is required for matching streams; different enumeration order fails
+conservatively. find may update directory atime; there is no explicit metadata
+mutation and regular-file atime/content are not accessed. Selected /dev-backed
+distributed filesystems can incur filesystem/network metadata I/O; no separate
+network/service commands are invoked. Permission, namespace and storage
+availability constrain the result, independently of effective UID 0.
+
+check: fresh complete eligible-scope scan, SUCCESS only with no finding,
+NON_COMPLIANT only after all selected paths complete reliably, otherwise ERROR.
+validate: fresh check, no cache. apply: fresh scan, SUCCESS if conforming,
+otherwise ERROR with manual application/permission/rollback guidance.
+rollback: silent repeatable SUCCESS without state. No CHANGED, chmod/chown/chgrp,
+backup, body hash or secret-file read. Source remediation is not executed:
+pathname global changes can break applications, race with inode replacement,
+partially fail or crash, and do not offer exact ACL/xattr/SELinux/capability
+restoration or a transaction journal. No automatic global correction is added.
+Scalar OPENSCAP_RULE=manual honestly represents the two-primary-rule limitation.
+
+### Validation work and incidents
+
+Dedicated suites exercise real GNU find over artificial trees; only inventory
+and targeted fault boundaries are mocked. Device metadata comes from the
+artificial root. Cases include byte transport, same-device/nested mount
+pruning, excluded parents with selected descendants, ro and /dev-backed remote
+selection, exception asymmetry, hidden files, links/types, malformed evidence,
+producer failures, resource caps, changes and ERROR precedence, fresh APIs,
+idempotence, silent rollback, artificial body/account-neighbor preservation,
+no file-atime changes, bounded redacted diagnostics and a 500-object tree.
+No host root is scanned as a compliance fixture and no new skip is introduced.
+
+Initial corrections before publication: Bash conditional arithmetic syntax;
+missing final NUL printf argument in the inventory trailer (eight positive
+inventory tests initially failed, while negative cases stayed closed); ShellCheck
+quoting; Bats preprocessing of inline mock-function headers; test source-path /
+intentional-literal/indirect-mock annotations and a nameref name collision seen
+by ShellCheck. Subsequent dedicated run passed 86 cases; final verification
+and full-suite results follow below. No provisional commit was created.
+
+Real Rocky Linux 10.2 validation remains required: versions/RPMs and GNU tool
+semantics, kernel mount source equivalence to the OpenSCAP partition probe,
+actual nested/bind/btrfs/overlay/overmounted namespaces, network and ro volumes,
+permissions/ACL/SELinux, OVAL versus SCE scope and newline-anchor comparison,
+large-host performance/resource bounds, isolated remediation/restoration and
+interruption testing, idempotence, reboot/post-reboot and golden-image checks.
+Fixtures do not prove real target validation or all-filesystem CIS coverage
+beyond the explicitly pinned eligible-mount criteria. Stop after 7.1.11.
+
+Additional implementation cross-check (not a change of CAS normative baseline):
+OpenSCAP official 1.3.10 source src/OVAL/probes/unix/linux/partition_probe.c
+reads /proc/mounts and builds the OVAL device entity from mnt_ent->mnt_fsname,
+confirming that the mount filesystem source, rather than filesystem type or
+MAJ:MIN alone, is the relevant field for ^/dev/ selection. This cross-check
+supports the inventory design; it does not pin or validate the future Rocky
+OpenSCAP RPM or guarantee identical error/encoding behavior across engines.
+Source: https://github.com/OpenSCAP/openscap/blob/1.3.10/src/OVAL/probes/unix/linux/partition_probe.c
+
+Dedicated final verification: inventory 21/21 and CIS 7.1.11 65/65, combined
+TAP 1..86, no failures/skips. All 436 historical cis_1_1_* mount-related tests
+passed with no failures/skips. The original 19249 bytes of lib/mount.sh were
+compared directly against the checkpoint and remain an identical prefix.
+ShellCheck 0.9.0 passed all five changed Shell/Bats files, including explicit
+module/metadata/Bats coverage beyond the unchanged workflow scope. Both Bats
+suites were genuinely preprocessed then syntax checked, and each production
+Shell file separately syntax checked. Complete regression/full results follow.
+
+Final protocol review added an explicit raw-input EOF marker, so a missing
+last newline is rejected even if the remaining columns appear complete, and
+nearest-parent validation to reject a hidden/inconsistent intermediate mount.
+Two additional inventory tests cover these cases (inventory now 23 tests;
+combined dedicated total 88). Kernel VFS/superblock options must begin with
+ro/rw. A write-through-nameref ShellCheck annotation is narrowly scoped.
+The preliminary full-suite run was started before this final review; its
+results are not used as final validation. The complete suite is rerun after
+locking this implementation, without changing CI or historical tests.
+
+Final local validation completed on the locked implementation:
+
+- Inventory dedicated 23 tests + CIS dedicated 65 tests = 88; no failure/skip.
+- Historical mount-related suites: TAP 1..436, 436 successes/0 failures/0 skips.
+- 7.1.1–7.1.10 plus module_api/filesystem/direct-helper consumers:
+  TAP 1..854, 854 successes/0 failures/0 skips, exit 0.
+- Final complete suite: exactly 239 top-level Bats files, each covered once
+  across eight disjoint batches (manifest compared to every current file),
+  all eight exits 0. Summed plan 5278 = previous 5190 + 88 new tests;
+  5276 executed successes, 0 failures, 2 inherited local Unix-socket skips.
+  Neither historical skip condition nor dependency/workflow was changed.
+- Genuine preprocessing and Bash syntax checking for both dedicated Bats
+  files; separate Bash syntax checks for lib/mount.sh and module/metadata pass.
+- ShellCheck 0.9.0: all five changed Shell/Bats files pass. The unchanged
+  40-file CI lint scope also passes; it includes lib/mount.sh but does not
+  directly lint CIS modules/metadata or Bats, so local additional coverage is
+  explicitly distinguished from CI coverage.
+- Whitespace diff checks pass. Original mount library prefix remains exactly
+  19249 bytes identical to the checkpoint. Other historical code/tests,
+  workflows and CAS remain unchanged. Six authorized files only.
+
+The existing workflow runs bats tests, discovering both new top-level suites;
+exact-SHA CI logs must independently confirm MI=23 and 7111=65, full plan
+1..5278, zero failures/skips and ShellCheck success before validation.
+Final commit/tree/compare/run/attempt/job/log results are reported externally
+following publication, not predicted here or written in a second commit.
+
+All completeness statements refer to the visible current mount namespace and
+explicit pinned OVAL eligible scope, not inaccessible hidden mounts, another
+namespace or a host outside a container/chroot. Confirm the intended system
+namespace and the deployed OpenSCAP engine on the real Rocky target. The
+implementation does not assert an atomic global filesystem snapshot, full
+all-filesystem coverage or completed Rocky Linux 10.2 production validation.
