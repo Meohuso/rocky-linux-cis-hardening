@@ -2819,3 +2819,209 @@ publication. Final SHA/tree/compare/CI/run/attempt are reported externally.
 Completion wording remains strictly: CIS7.1.13 technical RLCH inventory
 validated;human review and complete CIS conformity NOT demonstrated. A green
 CI cannot approve an executable or substitute for organizational human review.
+
+## CIS 7.2.1 - Shadowed password markers (observation-only)
+
+Baseline: CIS Red Hat Enterprise Linux 9 v2.0.0, Level 1 Server; future runtime
+validation target Rocky Linux 10.2. ComplianceAsCode/content pin
+`a4b23038aaf65a25d6e88baa2800c03d09fda577`, mapping
+`products/rhel9/controls/cis_rhel9.yml`, control 7.2.1, status automated, primary
+rule `accounts_password_all_shadowed`. Verified RHEL9 CCE: CCE-83618-9.
+XCCDF: `xccdf_org.ssgproject.content_rule_accounts_password_all_shadowed`
+(rule stem plus verified CAS OSCAP_RULE prefix). The rule-specific YAML,
+OVAL, embedded OCIL, five fixtures, applicability definition and generation
+constants were inspected at that pin. There is no rule-specific template,
+variable, SCE, Bash remediation or Ansible remediation in this rule directory;
+its YAML has no remediation template. CAS fixture scripts were read, never run.
+No Ansible is introduced in RLCH.
+
+### Normative criterion and scope
+
+The unix:password_object selects username pattern `.*`. The password_test has
+check="all"; its masked password-state pattern is exactly `^[x*]$`. Exactly x
+or exactly a single asterisk satisfies this OVAL criterion. Exclamation marks,
+empty values, other lock strings, prefix/suffix matches, uppercase X, arbitrary
+strings and artificial hash-like strings do not. Failure of that pattern does
+NOT demonstrate that a value is a hash, cleartext password or active credential.
+No UID threshold, root/system/service-account exemption, shell exemption or
+password algorithm exception is present in this OVAL. The fixtures confirm
+x/asterisk acceptance and rejection of a value containing x or a username
+containing x. The embedded OCIL awk expression is unanchored and examines
+whole rows; it is not substituted for the exact OVAL state predicate. No raw
+OCIL account output is reproduced. The prose description also mentions x/*.
+The full licensed benchmark text is not supplied here; implementation follows
+the selected, pinned CAS criterion and records this distinction explicitly.
+
+The configured input defaults to the local /etc/passwd; the injectable path is
+for artificial fixtures/offline file inspection, not an alternate-root full
+OpenSCAP platform evaluation. All validated entries in this file are evaluated,
+including system/root accounts and numeric-ID aliases. This implementation does
+not inspect /etc/shadow, correlate shadow existence, query NSS/SSSD or infer
+external identity completeness. The upstream password probe and its runtime
+NSS/backend behavior must be compared on the target OpenSCAP version; local
+file coverage is not a claim of complete external NSS enumeration. Compat
+inclusion entries and ambiguous/malformed local data give ERROR.
+
+CAS declares system_with_kernel because its password probe lacks offline mode.
+The pinned applicability definition tests an installed kernel package
+(kernel-core on RHEL); it excludes classic containers and includes the defined
+bootc/kernel-bearing cases. RLCH performs a local-file audit in its declared
+Rocky host scope; it does not claim to reproduce the OpenSCAP CPE/platform or
+password-probe runtime in this development container. RHEL10 CCE-87644-1 is
+context only and does not replace RHEL9 CCE-83618-9 or change the baseline.
+CIS 7.2.2 is not implemented or evaluated by this module.
+
+### Authorized additive library API
+
+The user explicitly authorized six paths for this control, including
+lib/identity_observation.sh and tests/identity_observation.bats. The exception
+does not extend to any other library or future control.
+
+New public API: `rlch_identity_password_markers PATH`. Exactly one argument.
+Returns 0 with one fixed token per validated passwd entry, in input order:
+X means the second field is exactly x; STAR means exactly *; OTHER means every
+other syntactically readable value. It returns 2 for invalid/unreadable/unstable
+or incomplete evidence, without diagnostics. It emits no name, UID/GID,
+password, hash, raw value, truncated value, value length or algorithm label.
+These tokens are literal classifications, not compliance decisions. Only the
+module interprets X/STAR according to the CIS/CAS policy.
+
+The existing rlch_identity_rows PATH passwd|group|nss signature, outputs and
+projection-specific behavior remain intact; password_markers is deliberately
+not accepted as a new kind on that public API. A private shared reader factors
+out the existing pipeline, avoiding a duplicate generic reader in the module.
+Existing rlch_identity_stamp and rlch_identity_stream interfaces are preserved.
+The 37 original identity-observation test bodies/assertions are unchanged;
+additional library tests verify all three historical projections and keep the
+old hardlink behavior distinct from the stricter new API. Account observation
+and filesystem observation libraries are untouched.
+
+### Read contract, confidentiality and stability
+
+The shared reader checks a canonical absolute path without symlink aliases or
+symlink ancestors, regular readable file, owner root or effective caller, and
+mode with readable bits and no group/other write bits. Its stamp includes
+numeric UID/GID, mode, device/inode, size and nanosecond-rendered mtime/ctime.
+It compares path metadata with the opened descriptor through /proc/self/fd,
+then restamps the path after reading. Group identity is observed for stability;
+this module does not reimplement CIS 7.1.1's root-group/mode policy. New marker
+observations additionally require nlink=1 before/opened/after reading. Unsafe
+metadata or hardlinks are ERROR, never repaired or treated as a marker deficit.
+
+Limits retained: 65536 entries, 16384 bytes per physical line and a 4194304-byte
+framed stream (including the existing 18-byte RLCH-IDENTITY-END newline frame).
+The new projection therefore accepts at most 4194286 input bytes and verifies
+that exact byte count against the opened/stable size. This detects a silent
+short read even if it stops after a complete valid record; framing alone could
+not prove that property. Missing final newline, NUL/control bytes, duplicate or
+empty names, compat +/- names, wrong field count (must be seven), nonnumeric,
+out-of-range or overlong UID/GID and empty input fail closed. Duplicate numeric
+IDs remain valid aliases; leading zeros retain the existing numeric semantics.
+Classification runs only on the validated records actually read. The parser
+buffers only non-secret classifications until the complete observation passes.
+Raw fields necessarily exist transiently in the awk process; they are never
+returned to the module or persisted in a report, log, cache or state file.
+
+Producer exit codes, pipe failures and any producer stderr invalidate evidence.
+All errors from the new public API are suppressed, including potentially
+sensitive dependency diagnostics. Public module diagnostics contain only fixed
+guidance and aggregate integer counts, no names, input paths or field values.
+Output-sink failure returns ERROR from the new API. As with any stdout API,
+a receiver must check exit status; output transport is not transactional.
+
+check/validate perform two independent complete classifications bracketed by
+fresh stamps; both classification sequences and the outer stamps must match.
+Any later invalid evidence overrides an earlier established marker deficit.
+The module defensively rejects unexpected/empty projection tokens and more
+than 65536 projected entries. No evidence is cached across calls. These are
+observed identity/content stability checks, NOT an atomic filesystem snapshot,
+lock, adversarial filesystem attestation or guarantee against changes after
+the last observation. ACL/SELinux, hostile kernel/filesystem or restored/
+forged metadata are not certified. There is no elapsed-time I/O timeout;
+resource limits bound stream size/entries, not blocked storage latency.
+Ordinary file reads can update atime; content, ownership, permissions and
+credential state are not changed.
+
+### Public behavior and remediation
+
+check: 0 iff every local entry is evaluable and classified X/STAR; 1 iff a
+complete stable evaluation contains OTHER; 2 on unreliable evidence.
+validate: a fresh check. apply: fresh check, success only when already compliant;
+otherwise fixed manual-remediation guidance and ERROR. No CHANGED result.
+rollback: silent, idempotent no-op returning success, even when input is absent.
+
+CAS prose suggests investigating the cause and resetting/deleting affected
+accounts; it does not provide an atomic reversible fix in this pinned rule.
+Moving or replacing password material across passwd/shadow, pwconv, account
+locking/deletion or resetting passwords risks loss of access and requires a
+coordinated account-database transaction and exact protected restoration not
+established here. Observation-only is therefore used. No passwd/shadow write,
+password utility, backup of sensitive contents, credential hash computation or
+account mutation occurs. No production account file was used as a test fixture.
+
+### Validation and remaining target work
+
+Dedicated tests exclusively use artificial account files and non-authentic
+sentinel/hash-like strings. They cover exact markers, empty/lock/unknown values,
+all account categories, ordered multiple classifications, aggregate findings,
+legacy API compatibility, malformed data, IO/stderr failures, complete-record
+and mid-record truncation, size/line/count bounds, maximum valid entry count,
+symlinks/ancestor links/hardlinks, substitutions/mutations, contradictory fresh
+observations, output failure, status precedence, freshness/idempotence, silent
+rollback, unchanged fixture data and no sentinels on either output channel.
+
+Prepublication incidents: the framework-loading tests initially omitted common
+helpers and module filename constants; their fixture setup was corrected to
+match framework usage. ShellCheck Bats-isolation false positives and literal
+artificial dollar strings have documented test-only annotations. No historical
+assertion was weakened; no workflow or out-of-scope file was changed.
+
+Final local validation counts and exact-SHA CI are recorded after verification.
+No provisional commit is published. Required remaining real Rocky Linux 10.2
+validation: kernel/applicability and Bash/awk/coreutils/OpenSCAP/RPM versions,
+local/root/system accounts, actual permissions/ACL/SELinux and account database
+management, NSS/SSSD and password-probe scope comparison, OpenSCAP parity versus
+this pinned criterion and licensed benchmark, operational performance/latency,
+second-run idempotence, reboot/post-reboot and golden image. Any future
+remediation needs isolated account-access and exact protected restoration tests.
+Automated CI validates the implementation/tests, not production readiness.
+STOP after CIS 7.2.1; no CIS 7.2.2 or Level 2 CIS 7.1.14 work.
+
+The inherited Bash descriptor open does not provide O_NOFOLLOW/O_NONBLOCK or
+an atomic open-and-validate transaction. Descriptor comparison precedes body
+reading, and observable substitutions are rejected, but a concurrently replaced
+special object or stalled filesystem can still block an open/read. This limit
+is not hidden behind a completeness or atomicity claim; target deployment must
+use trusted account-database paths and operational supervision.
+
+Final locked local validation:
+
+- identity_observation: TAP 1..72, 72 successes (37 unchanged historical cases
+  plus 35 additive cases), zero failures/skips.
+- CIS 7.2.1: TAP 1..52, 52 successes, zero failures/skips. Combined dedicated
+  run TAP 1..124, exit 0; 87 newly added cases in total.
+- Independent scratch oracle: 103 artificial literal-field values agree with
+  exact x/* classification; empty stderr. No real identity data involved.
+- Targeted regressions: 34 files in four disjoint batches, plans
+  361/339/327/346; 1373 successes, zero failures/skips, all exit 0. Includes
+  existing 5.4 account/password modules, all CIS 7.1.1 through 7.1.13, module
+  API and concerned identity/filesystem/mount libraries.
+- Complete suite: 244 Bats files, each covered exactly once in eight disjoint
+  batches (31/31/31/31/30/30/30/30 files), plans
+  753/646/629/852/592/706/625/753, total 5556 (=5469+87). All exits 0;
+  5554 successes, zero failures, exactly two inherited local socket skips:
+  CIS 6.2.1.2 unexpected socket and CIS 6.2.2.1.2 direct socket helper.
+  No new skip. CI must execute both cases, with zero failures/skips.
+- Bash syntax for changed library/module/metadata; genuine bats-preprocess
+  followed by Bash syntax for both affected Bats files: PASS.
+- ShellCheck 0.9.0 on all five changed Shell/Bats/metadata files: PASS;
+  separately all 42 files in the unchanged CI lint scope: PASS. The module
+  and Bats lint is extra local coverage; the workflow discovers the new suite
+  via unchanged `bats tests`.
+- Locked source/test hashes held throughout validation; git diff --check and
+  strict six-path scope check pass. Original 37 library test bodies/assertions
+  unchanged. No other library, historical module/test, workflow or CAS edit.
+
+Final parent/tree/commit, compare and exact-SHA CI/run/attempt/jobs/TAP are
+reported externally after the single publication, avoiding any second commit
+for self-referential documentation. No production-readiness claim is made.
