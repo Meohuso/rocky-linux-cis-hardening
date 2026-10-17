@@ -2613,3 +2613,209 @@ Conclusion after exact-SHA green CI: RLCH implementation validated only for
 the supported partial pinned CAS OVAL scope. Full CIS7.1.12 conformity remains
 NOT demonstrated, notably for directories and unproved external enumeration.
 STOP after7.1.12. Do not start7.1.13.
+
+## CIS 7.1.13 — partial technical SUID/SGID review inventory (2026-10-17)
+
+### Authorized Manual contract and references
+
+User-authorized Option A resolves the preceding normative/architectural stop:
+read-only partial technical inventory, exactly four files, no change to the
+framework/libraries/workflows/history. A technical inventory is not human
+review. check/validate/apply ALWAYS return existing ERROR=2; rollback alone
+returns silent SUCCESS=0 because it has no state or mutation to undo.
+No NON_COMPLIANT is inferred merely from a special bit, no CHANGED, no approval
+flag/file or new result/metadata field. Successful observation is an internal
+mechanism result only; it never maps to compliant in the execution engine.
+
+Immutable checkpoint/direct parent a01ae47e9178c4d624729b442034e0314cec179b;
+tree04cb0b045658113bcc1f242747feac54364a587a; checkpoint parent
+0d009469a20a3d4d5a87cff8fa11c4d6c77f9214. HEAD/origin/main/GitHub main/tree
+agreed and working tree was clean before changes. CI292/run38945750873/
+attempt1 completed/success on that exact SHA. Both jobs and logs freshly
+verified: TAP1..5413,5413 successes,0 failures/skips; ShellCheck0.9.0/42 files.
+The 7.1.12 checkpoint remains only partial OVAL coverage, not full CIS approval.
+
+Baseline remains CIS RHEL9 v2.0.0 / Level1 Server, with CAS content pinned to
+a4b23038aaf65a25d6e88baa2800c03d09fda577. products/rhel9/controls/cis_rhel9.yml
+7.1.13 has status:manual, l1_server/l1_workstation and RELATED rules only:
+
+- xccdf_org.ssgproject.content_rule_file_permissions_unauthorized_suid;
+  CCE-83897-9 (RHEL9).
+- xccdf_org.ssgproject.content_rule_file_permissions_unauthorized_sgid;
+  CCE-83901-9 (RHEL9).
+
+Full IDs follow the pinned OSCAP_VENDOR/OSCAP_RULE constants and rule IDs.
+Metadata OPENSCAP_RULE=manual: neither related rule is silently promoted to a
+selected automated CIS compliance check. No new IDs or benchmark version.
+
+Inspected both rule.yml files, descriptions/OCIL/warnings, oval/shared.xml,
+sce/shared.sh, all fixtures, macro create_local_mount_points_list and SCE
+find_files/find_command, plus the pinned mapping/constants. These two rule
+directories contain no Bash/Ansible remediation files or standalone rule
+template; none of the destructive CAS fixtures is executed. Their OVAL uses
+special-bit state and membership in rpmverifyfile paths (verification behaviors
+including nomd5=true). Their descriptions assume an organizationally trusted
+RPM installation/signature process; RPM membership alone does not establish
+actual legitimacy, current authorization, human reviewer identity, timestamp,
+review scope or decision. This module makes no RPM query or signature claim.
+
+Related OVAL selection is ^/dev/.*$ over mount SOURCE, with ^/sysroot/.*$
+excluded for BOTH bits. SCE instead selects mount types, adds tmpfs /tmp and
+uses -type f, while OCIL shows find / -xdev -type f -perm -4000/-2000. Those
+are different technical scopes, not interchangeable proof of full Manual CIS
+coverage. The pinned mapping supplies the Manual title but not the complete
+licensed benchmark review procedure. The authorized compromise is explicitly
+PARTIAL technical coverage of /dev-backed mounts, regular files and the OVAL
+sysroot exclusion; it is not claimed to reproduce all OVAL object types or the
+complete normative Manual scope. No SCE tmpfs addition, 7.1.11 selinux exception,
+external benchmark mix or unselected rule is imported.
+
+### Inventory architecture and scope
+
+Only modules/cis/7/1/13/{metadata.conf,module.sh}, tests/cis_7_1_13.bats and
+this document change. Existing filesystem_observation.sh/mount_inventory are
+sourced and reused without modification. No generic walker/parser/report
+framework is copied into the module. Its selector/visitor contain selection,
+bit policy, review-specific association/display and bounded evidence only.
+
+Selection includes sources under /dev/, even read-only/nosuid and /dev-backed
+distributed/network volumes. Ordinary host:/share NFS, proc, tmpfs and overlay
+sources are outside this chosen technical scope, including /tmp on tmpfs.
+Bind roots and mount IDs/parents remain distinct, and every child mount is
+pruned by the generic traversal, including excluded same-device bind mounts.
+Selected descendants below excluded ancestors are independently traversed.
+The policy associates each finding with the nearest visible mount in the
+validated inventory. No assertion of hidden/other-namespace filesystem access.
+
+Only type=f with octal mode &06000 !=0 is collected:04000,02000 or both.
+Execute bits are not an extra eligibility predicate; a non-executable inert
+fixture with a special bit is still metadata evidence. Directory SGID,
+symlinks and special objects are not collected; symlinks are not followed.
+Hardlink paths remain separate review entries with matching device/inode and
+nlink evidence. A special bit or mount nosuid option is not authorization.
+Newline-bearing /dev source or candidate /sysroot exclusion with unproved
+anchored-PCRE semantics invalidates observation conservatively.
+
+The library provides canonical root/device checks, validated NUL-framed tuples,
+two exact ordered metadata observations, intermediate/final mount comparisons,
+producer status/stderr and truncation validation. Any failure invalidates the
+ENTIRE inventory, including earlier collected findings. Selected file-mounted
+roots, empty selection, unreadable/unsupported/unstable evidence and caps yield
+ERROR, never an apparently complete empty inventory. No target file is opened
+or executed and no content fingerprint is computed. Numeric UID/GID are not
+resolved through NSS; identity_observation.sh is unnecessary for this control.
+
+Inherited bounds:4096 mounts/4MiB mount input;100000 objects/64MiB per pass,
+200000 total observations,4096-byte fields,depth1024. Module display budget:
+4096 finding paths and8MiB escaped mount+file body, otherwise no report.
+Exceeding either is ERROR even if an already-collected entry looks meaningful.
+No wall-clock deadline or atomic filesystem snapshot is promised. Changes
+seen between observations are detected; transient ABA or changes after the
+last sample, untrusted fabricated omissions, different enumeration order and
+host/container/chroot namespace boundaries remain limitations. Confirm real
+performance and intended host namespace on Rocky10.2.
+
+### Controlled evidence restitution and status
+
+RLCH_CIS_7_1_13_EMIT_INVENTORY defaults to false; only exact true/false accepted.
+Default stdout stays empty; fixed bounded stderr contains a count and explains
+unverified human review, without paths, UID/GID values, content or package data.
+Explicit true opts into stdout disclosure; the trusted caller chooses a private
+recipient/redirection. The module never opens/writes a report file or changes
+its mode. Framework informational stdout, if used, is separate from the framed
+inventory; callers must identify complete BEGIN/END frames, not treat logs as
+approval or source executable shell text.
+
+After the WHOLE observation succeeds, stdout may contain:
+BEGIN CIS_7_1_13_INVENTORY version=1 scope=CAS_RELATED_OVAL_PARTIAL
+review=UNVERIFIED complete=UNCONFIRMED (one physical header line), then MOUNT
+rows (ID,parent,device,root,target,source,type,VFS options) and FILE rows
+(mount ID,logical path,type,device,inode,nlink,numeric UID/GID,mode,ctime,
+separate SUID/SGID flags), followed by END with counts,observation=COMPLETE,
+review=UNVERIFIED and conformity=UNDEMONSTRATED (one physical footer line).
+Mount-specific superblock options are deliberately not disclosed because they
+are unnecessary and can carry credentials. Paths/text use Bash printf %q in
+LC_ALL=C: arbitrary bytes, newlines, tabs and shell syntax become display data
+on a single physical line. Never eval/source/execute these display records.
+
+The complete body is bounded in memory before any publication; the module
+emits nothing on scan failure. Stdout is not transactional: receivers require
+its terminal END frame to detect interrupted/partial transport. A private
+subshell ignores SIGPIPE during output, allowing EPIPE/full-device failure to
+return ERROR with fixed guidance instead of killing the evaluator with141.
+The module cannot prove downstream storage durability/permissions, who read
+stdout, or review completion. An empty complete inventory still returns ERROR.
+
+check,validate,apply all perform fresh observations with the same contract;
+apply makes no remediation or approval. User-provided REVIEWED/APPROVED flags
+are ignored. No automatic chmod/chown/chgrp, deletion, account edit, RPM action,
+file body read/hash/execution, backup or persisted state; rollback silent and
+idempotent. Ordinary directory atime may change through filesystem traversal;
+regular-file contents/mode/ownership/atime are not accessed or changed.
+
+### Verification and operational limits
+
+Dedicated Bats cases use artificial trees, actual GNU find, fixture mount
+inventories and narrowly injected fault boundaries. Files with special bits
+contain inert plain data and have no executable permission; no real privileged
+executable is created or run. Tests cover each bit/both/sticky, arbitrary
+bytes/forged frame strings, hardlinks/symlinks/FIFOs/directories, mount contexts,
+bind/nested/excluded/nosuid/read-only/distributed scopes, exact exclusions,
+producer failures/truncation/instability, count/byte caps, redacted defaults,
+explicit framed output, transport errors/SIGPIPE, freshness/idempotence,
+silent rollback and no false compliant/non-compliant/changed result.
+
+Prepublication test corrections: framework-loading fixture needed module-root
+and namespace setup; a direct callback resource test used a circular nameref
+name and was renamed. Both targeted corrections passed before the full dedicated
+run. Mount-specific superblock options were removed from output before source
+lock; an explicit non-disclosure test was added. No historical test assertion,
+workflow, library or source pin is changed; no provisional commit is published.
+
+Final locked local test counts and validation follow below. Commit/tree/run
+identifiers and exact-SHA CI are verified externally after the single final
+publication, without a second documentation commit.
+
+Required future real Rocky Linux10.2 validation: GNU/Bash/OpenSCAP and RPM
+versions, actual special-bit file metadata, mountinfo/dev_t and bind/stacked/
+read-only/nosuid/distributed mounts, performance/memory/resource bounds,
+permissions/SELinux, comparison with CAS OVAL versus SCE and the full licensed
+CIS review procedure, protected stdout capture and downstream framing checks,
+repeat observations/reboot/post-reboot, a traceable human authorization review
+of every relevant file and golden-image validation. This inventory does not
+perform RPM provenance/signature verification or human attestation, nor prove
+full Manual CIS conformity. STOP after7.1.13; no subsequent control work.
+
+Final local validation:
+
+- Dedicated tests:TAP1..56,56 successes,0 failures/skips,exit0.
+- Historical targeted regressions:CIS7.1.1 through7.1.12 plus module_api,
+  filesystem,mount_inventory,filesystem_observation;16 files in four disjoint
+  batches,plans227/258/240/209,all exits0;934 successes,0 failures/skips.
+- Complete suite:243 top-level Bats files,each covered exactly once in eight
+  disjoint batches31/31/31/30/30/30/30/30;plans735/614/680/721/595/699/649/776.
+  Sum5469 (=5413 baseline+56 new),every batch exit0;5467 successes,0 failures,
+  exactly2 inherited local Unix-socket skips (6.2.1.2 and6.2.2.1.2).
+- Bash syntax for module/metadata and genuine Bats preprocessing then Bash
+  syntax for the dedicated suite:PASS.
+- ShellCheck0.9.0 on module/metadata/Bats:PASS;separately the unchanged
+  42-file CI lint scope:PASS. Module/metadata/Bats are extra local lint
+  coverage; the unchanged workflow discovers the new top-level Bats suite.
+- git diff/check,index scope and production/test hash checks pass. Exactly
+  four authorized paths; no library,historical module/test,workflow or CAS
+  change. No new skip or weakened historical assertion.
+
+Final test-only adjustments:the nosuid assertion now compares its expected
+quoted display (printf %q escapes the comma), rather than expecting a raw
+comma. After the complete regression run,ShellCheck identified the renamed
+fixture array as unused because access is through a nameref. One narrowly
+scoped SC2034 comment was added;no executable code changed. Preprocessing,
+syntax,both lint scopes and that one resource-bound test were rerun and pass.
+No broad suite rerun is needed for that comment-only change;exact-SHA CI must
+independently confirm all5469 cases,including56 dedicated,zero failure/skip.
+All corrections precede the single final commit;no force push or intermediate
+publication. Final SHA/tree/compare/CI/run/attempt are reported externally.
+
+Completion wording remains strictly: CIS7.1.13 technical RLCH inventory
+validated;human review and complete CIS conformity NOT demonstrated. A green
+CI cannot approve an executable or substitute for organizational human review.
