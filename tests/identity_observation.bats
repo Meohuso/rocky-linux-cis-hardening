@@ -234,3 +234,169 @@ marker_error() {
     result=0; rlch_identity_password_markers "$P" > /dev/full 2> "$BATS_TEST_TMPDIR/err" || result=$?
     [ "$result" -eq 2 ]; [ ! -s "$BATS_TEST_TMPDIR/err" ]
 }
+
+
+# Additive shadow presence projection; exclusively artificial fixtures.
+shadow_row() { printf 'fixture:%s:20000:0:99999:7:::\n' "$1" > "$P"; chmod 0600 "$P"; }
+shadow_error() {
+    run rlch_identity_shadow_password_presence "$P"
+    [ "$status" -eq 2 ]; [ -z "$output" ]
+}
+@test "idobs shadow empty field has EMPTY token" {
+    shadow_row ''; run rlch_identity_shadow_password_presence "$P"; [ "$status" -eq 0 ]; [ "$output" = EMPTY ]
+}
+@test "idobs shadow lock and zero values are NONEMPTY not truth tests" {
+    for value in '!' '*' '!!' 0 00 0.0 ' ' ';' $'\\' x; do
+        shadow_row "$value"; run rlch_identity_shadow_password_presence "$P"; [ "$status" -eq 0 ]; [ "$output" = NONEMPTY ]
+    done
+}
+@test "idobs shadow arbitrary and artificial hash strings never escape" {
+    for value in 'ARTIFICIAL_SENTINEL' '$6$FAKE_SALT$PRIVATE_SENTINEL' '$y$FAKE_SALT$PRIVATE_SENTINEL' 'FAKEtraditionalSENTINEL'; do
+        shadow_row "$value"; run rlch_identity_shadow_password_presence "$P"; [ "$status" -eq 0 ]; [ "$output" = NONEMPTY ]
+    done
+}
+@test "idobs shadow all entries retain order without names or ages" {
+    printf 'SECRETNAME::20000:0:99999:7:::\nother:!:20000:0:99999:7:::\nthird:0:20000:0:99999:7:::\nlast::20000:0:99999:7:::\n' > "$P"
+    run rlch_identity_shadow_password_presence "$P"; [ "$status" -eq 0 ]; [ "$output" = $'EMPTY\nNONEMPTY\nNONEMPTY\nEMPTY' ]
+}
+@test "idobs shadow optional numeric fields are allowed" {
+    printf 'fixture:!:::::::\n' > "$P"; run rlch_identity_shadow_password_presence "$P"; [ "$status" -eq 0 ]; [ "$output" = NONEMPTY ]
+}
+@test "idobs shadow signed ages numeric boundaries and leading zeros" {
+    printf 'fixture:!:-9223372036854775808:+0:9223372036854775807:-1:-2:0000:18446744073709551615\n' > "$P"
+    run rlch_identity_shadow_password_presence "$P"; [ "$status" -eq 0 ]; [ "$output" = NONEMPTY ]
+}
+@test "idobs shadow malformed numeric fields are invalid not empty findings" {
+    for n in bad 9223372036854775808 -9223372036854775809 '1 2'; do
+        printf 'fixture:SENTINEL:%s:0:99999:7:::\n' "$n" > "$P"; shadow_error
+    done
+    printf 'fixture:!:20000:0:99999:7:::18446744073709551616\n' > "$P"; shadow_error
+}
+@test "idobs shadow wrong field counts and passwd format fail closed" {
+    for row in 'fixture:!:1:1::/:/bin/false' 'fixture:!:1:0:99:7::' 'fixture:!:1:0:99:7::::extra'; do
+        printf '%s\n' "$row" > "$P"; shadow_error
+    done
+}
+@test "idobs shadow empty missing and special object rejected" {
+    : > "$P"; shadow_error; rm "$P"; shadow_error
+    mkdir "$P"; shadow_error; rmdir "$P"; mkfifo "$P"; shadow_error
+}
+@test "idobs shadow duplicate empty and compat names rejected" {
+    shadow_row '!'; printf 'fixture::20000:0:99999:7:::\n' >> "$P"; shadow_error
+    printf ':!:20000:0:99999:7:::\n' > "$P"; shadow_error
+    printf '+:::::::0:\n' > "$P"; shadow_error
+}
+@test "idobs shadow symlink and ancestor aliases rejected" {
+    shadow_row '!'; mv "$P" "$P.real"; ln -s "$P.real" "$P"; shadow_error
+    rm "$P"; mkdir "$P.dir"; cp "$P.real" "$P.dir/shadow"; ln -s "$P.dir" "$P"; P="$P/shadow"; shadow_error
+}
+@test "idobs shadow hardlinks rejected" {
+    shadow_row '!'; ln "$P" "$P.alias"; shadow_error
+}
+@test "idobs shadow unsafe writable modes rejected" {
+    shadow_row '!'; for mode in 0664 0666; do chmod "$mode" "$P"; shadow_error; done
+}
+@test "idobs shadow mode zero depends on actual read authority without changing old stamp" {
+    shadow_row '!'; chmod 0000 "$P"
+    if [[ -r "$P" ]]; then
+        run rlch_identity_shadow_password_presence "$P"; [ "$status" -eq 0 ]; [ "$output" = NONEMPTY ]
+    else shadow_error; fi
+    run rlch_identity_stamp "$P"; [ "$status" -eq 2 ]; [ -z "$output" ]
+    chmod 0600 "$P"
+}
+@test "idobs shadow mode zero is ERROR if reader cannot open it" {
+    shadow_row '!'; chmod 0000 "$P"
+    # -r remains the real access decision; do not simulate privilege by EUID.
+    if [[ ! -r "$P" ]]; then shadow_error; else
+        rlch_identity_stream() { return 91; }; shadow_error
+    fi
+    chmod 0600 "$P"
+}
+@test "idobs shadow final newline required" {
+    printf 'fixture:!:20000:0:99999:7:::' > "$P"; shadow_error
+}
+@test "idobs shadow NUL and controls withheld" {
+    printf 'fixture:SENTINEL\000:20000:0:99999:7:::\n' > "$P"; shadow_error
+    shadow_row $'SENTINEL\r'; shadow_error
+    shadow_row $'SENTINEL\t'; shadow_error
+}
+@test "idobs shadow mid-record truncation rejected" {
+    shadow_row '!'; rlch_identity_stream() { /usr/bin/head -c 10; }; shadow_error
+}
+@test "idobs shadow whole-record silent truncation rejected" {
+    shadow_row '!'; printf 'second::20000:0:99999:7:::\n' >> "$P"
+    rlch_identity_stream() { /usr/bin/head -n 1; }; shadow_error
+}
+@test "idobs shadow no producer bytes cannot become complete inventory" {
+    shadow_row '!'; rlch_identity_stream() { :; }; shadow_error
+}
+@test "idobs shadow appended producer records rejected by exact byte count" {
+    shadow_row '!'; rlch_identity_stream() { /usr/bin/cat; printf 'second:!:20000:0:99999:7:::\n'; }; shadow_error
+}
+@test "idobs shadow producer error with complete prefix returns no partial tokens" {
+    shadow_row ''; rlch_identity_stream() { /usr/bin/cat; return 99; }; shadow_error
+}
+@test "idobs shadow producer stderr sentinel never escapes" {
+    shadow_row ''; rlch_identity_stream() { /usr/bin/cat; printf 'PRIVATE_SALT_SENTINEL\n' >&2; }; shadow_error
+}
+@test "idobs shadow malformed later record withholds earlier empty classification" {
+    shadow_row ''; printf 'BROKEN:PRIVATE_SENTINEL\n' >> "$P"; shadow_error
+}
+@test "idobs shadow mutation during read detected" {
+    shadow_row ''; rlch_identity_stream() { /usr/bin/cat; printf 'second:!:20000:0:99999:7:::\n' >> "$P"; }; shadow_error
+}
+@test "idobs shadow path replacement detected" {
+    shadow_row '!'; rlch_identity_stream() { /usr/bin/cat; cp "$P" "$P.new"; mv "$P.new" "$P"; }; shadow_error
+}
+@test "idobs shadow link count instability rejected" {
+    shadow_row '!'; rlch_identity_stream() { /usr/bin/cat; ln "$P" "$P.alias"; }; shadow_error
+}
+@test "idobs shadow forged end frame rejected" {
+    shadow_row '!'; printf 'RLCH-IDENTITY-END\n' >> "$P"; shadow_error
+}
+@test "idobs shadow line length bound" {
+    awk 'BEGIN {printf "fixture:";for(i=0;i<16400;i++) printf "a";print ":20000:0:99999:7:::"}' > "$P"; shadow_error
+}
+@test "idobs shadow record count bound" {
+    awk 'BEGIN {for(i=0;i<65537;i++) print "u"i":!:20000:0:99999:7:::"}' > "$P"; shadow_error
+}
+@test "idobs shadow total byte bound" {
+    awk 'BEGIN {for(i=0;i<500;i++) {printf "u%d:",i;for(j=0;j<10000;j++) printf "a";print ":20000:0:99999:7:::"}}' > "$P"; shadow_error
+}
+@test "idobs shadow maximum valid entry count" {
+    awk 'BEGIN {for(i=0;i<65536;i++) print "u"i":!:20000:0:99999:7:::"}' > "$P"
+    rlch_identity_shadow_password_presence "$P" > "$BATS_TEST_TMPDIR/classifications"
+    [ "$(wc -l < "$BATS_TEST_TMPDIR/classifications")" -eq 65536 ]
+}
+@test "idobs shadow output failure normalized without diagnostics" {
+    shadow_row '!'; result=0
+    rlch_identity_shadow_password_presence "$P" > /dev/full 2> "$BATS_TEST_TMPDIR/err" || result=$?
+    [ "$result" -eq 2 ]; [ ! -s "$BATS_TEST_TMPDIR/err" ]
+}
+@test "idobs shadow stdout stderr and traces never include artificial salt or hash" {
+    shadow_row '$6$PRIVATE_SALT$PRIVATE_SENTINEL'
+    result=0
+    # Isolate xtrace from Bats traps. Producer trace stderr invalidates evidence;
+    # ERROR is intentional, and neither output channel may disclose the field.
+    bash -c 'source "$1"; set -x; rc=0; rlch_identity_shadow_password_presence "$2" || rc=$?; set +x; exit "$rc"' bash \
+        "$BATS_TEST_DIRNAME/../lib/identity_observation.sh" "$P" \
+        > "$BATS_TEST_TMPDIR/out" 2> "$BATS_TEST_TMPDIR/err" || result=$?
+    [ "$result" -eq 2 ]; [ ! -s "$BATS_TEST_TMPDIR/out" ]
+    [[ "$(cat "$BATS_TEST_TMPDIR/err")" != *PRIVATE* ]]
+}
+@test "idobs shadow public API no argument and extra arguments are silent errors" {
+    run rlch_identity_shadow_password_presence; [ "$status" -eq 2 ]; [ -z "$output" ]
+    run rlch_identity_shadow_password_presence "$P" extra; [ "$status" -eq 2 ]; [ -z "$output" ]
+}
+@test "idobs shadow fresh deterministic observations preserve fixture" {
+    shadow_row '$y$PRIVATE_SALT$PRIVATE_SENTINEL'; before="$(stat -c '%d:%i:%u:%g:%a:%s:%y:%z' "$P")"
+    a="$(rlch_identity_shadow_password_presence "$P")"; b="$(rlch_identity_shadow_password_presence "$P")"; [ "$a" = "$b" ]
+    [ "$before" = "$(stat -c '%d:%i:%u:%g:%a:%s:%y:%z' "$P")" ]
+    shadow_row ''; [ "$(rlch_identity_shadow_password_presence "$P")" = EMPTY ]
+}
+@test "idobs shadow extension preserves prior kinds and exact marker API" {
+    run rlch_identity_rows "$P" passwd; [ "$status" -eq 0 ]; [ "$output" = $'0\n1001' ]
+    run rlch_identity_password_markers "$P"; [ "$status" -eq 0 ]; [ "$output" = $'OTHER\nX' ]
+    unknown "$P" shadow_presence
+    shadow_row '!'; run rlch_identity_password_markers "$P"; [ "$status" -eq 2 ]; [ -z "$output" ]
+}

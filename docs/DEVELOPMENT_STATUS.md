@@ -3025,3 +3025,229 @@ Final locked local validation:
 Final parent/tree/commit, compare and exact-SHA CI/run/attempt/jobs/TAP are
 reported externally after the single publication, avoiding any second commit
 for self-referential documentation. No production-readiness claim is made.
+
+## CIS 7.2.2 - Empty shadow password fields (observation-only)
+
+Baseline: CIS Red Hat Enterprise Linux 9 v2.0.0, Level 1 Server, future target
+Rocky Linux 10.2. ComplianceAsCode/content pin
+`a4b23038aaf65a25d6e88baa2800c03d09fda577`, mapping
+`products/rhel9/controls/cis_rhel9.yml`, 7.2.2 automated, selected rule
+`no_empty_passwords_etc_shadow`, verified RHEL9 CCE-85972-8; XCCDF
+`xccdf_org.ssgproject.content_rule_no_empty_passwords_etc_shadow` (verified CAS
+OSCAP_VENDOR/OSCAP_RULE prefix and rule stem). The rule YAML, OVAL, embedded
+OCIL, Bash/Ansible fixes, two fixtures, STIG policy text and applicability
+sources/macros were inspected at that exact pin. No rule-specific variable,
+template or SCE is selected by this rule. CAS fixtures and remediation scripts
+were read only, never executed. No Ansible is implemented in RLCH. RHEL10's
+CCE-90491-2 is context only; neither it nor its STIG text replaces the baseline.
+The licensed full CIS benchmark text was not supplied; the exact selected CAS
+criterion, its scope and documented differences are the implementation basis.
+
+### Criterion and applicability
+
+The unix:shadow_object selects username `.*` and excludes records matching
+password pattern `.+`. Its shadow_test uses check=all and
+check_existence=none_exist, with no remaining state: no empty fields may remain.
+On structurally valid local records, EMPTY means exactly zero field bytes;
+NONEMPTY means at least one character. !, *, !!, 0, whitespace, arbitrary
+strings and synthetic hash-like values are all nonempty. This is NOT an
+assessment of a hash algorithm, cryptographic validity, lock state or overall
+account security. No root/system/user exception or age threshold is invented.
+
+The OCIL/prose command `awk -F: '!$2 {print $1}' /etc/shadow` and the supplied
+fixes use awk truthiness, which also reports some nonempty numeric strings
+such as 0. RLCH uses exact presence/length semantics from the OVAL, never this
+approximation. The empty-file case is deliberately ERROR: a missing/empty or
+malformed account base is not sufficient evidence of a complete valid local
+observation, even though an abstract none_exist test alone could be vacuous.
+Malformed/ambiguous evidence is ERROR, not an invented CIS password finding.
+
+The YAML's general warning says the rule is not applicable inside a container.
+Its precise pinned platform is system_with_kernel. That platform explicitly
+excludes classic containers/images but includes kernel-bearing bootc images and
+running bootc systems; it is not equivalent to checking the word container or
+PID 1. For RHEL9 the generated predicate selects installed kernel-core.
+RLCH therefore uses existing lib/rpm_observation.sh with policy kernel-core in
+the module. Two identical complete nonempty RPM inventories are required by
+the reused package helper; absence established from valid inventories gives
+NOT_APPLICABLE (existing result 3), without opening shadow. Missing RPM,
+query error, stderr, malformed/empty or changing inventory gives ERROR, never
+an assumed container. Applicability is rechecked after the two file reads;
+loss/change of the required installed state during observation is ERROR.
+Kernel-bearing bootc cases follow this exact technical CAS definition even if
+an environment variable says container. General warning versus detailed CPE
+scope is recorded rather than silently treating all container-named systems
+as compliant or all as excluded. RPM and file fixtures are entirely artificial;
+the development container's real account files are not audited by these tests.
+
+### Authorized API and compatibility
+
+The user explicitly renewed the six-file exception for CIS 7.2.2 alone:
+lib/identity_observation.sh, tests/identity_observation.bats, module/metadata
+7/2/2, tests/cis_7_2_2.bats and this document. No other library, historical
+module/test, workflow, AGENTS.md or CAS file is changed.
+
+New API: `rlch_identity_shadow_password_presence PATH`. Exactly one argument;
+returns 0 with one EMPTY or NONEMPTY token per validated nine-field record, in
+file order. Returns 2 with no diagnostics for incomplete, unreadable, invalid,
+ambiguous or observably unstable evidence. No account name, password field,
+hash/fragment, salt, algorithm, raw line or age field is emitted. It neither
+chooses CIS applicability nor decides compliance. The module alone maps
+presence tokens to the selected CIS policy and existing framework statuses.
+
+The existing public rlch_identity_stamp, rlch_identity_rows passwd/group/nss
+and rlch_identity_password_markers retain signatures, projections and result
+behavior. The 72 pre-existing identity-observation tests (37 original plus
+35 from 7.2.1) are kept byte-for-byte, and the complete 7.2.1 suite is rerun.
+Shared reader and stamp mechanics are factored inside the authorized library,
+not copied into the module. Shadow is not coerced into the seven-field passwd
+marker API. A private metadata dispatcher selects the shadow read contract;
+public passwd/group/nss callers retain their original contract.
+
+### Reading, format and confidentiality
+
+Canonical absolute paths and regular readable files only; no symlink or
+symlink-ancestor alias. Ownership must be root or the effective caller;
+UID/GID/mode/device/inode/size/mtime/ctime are observed. No group/other writable
+mode is accepted. A mode-0000 shadow file is accepted only when the process
+actually passes the readability/open checks (e.g. a privileged authorized
+reader); permissions are never changed to enable observation. The historical
+public stamp still rejects mode 0000. Group identity is checked for stability,
+not redefined as CIS 7.1.2 permission policy; that control remains separate.
+Single hardlink is required before opening, on the descriptor and after reading.
+
+The inherited descriptor/path tuples must agree before body reading and after
+the complete pipeline. Limits: 65536 records, 16384 bytes per physical line,
+4194304-byte framed stream. The existing 18-byte end frame leaves at most
+4194286 input bytes. The exact byte count must equal the stable observed file
+size, rejecting silent complete-row truncation as well as mid-row truncation.
+A final newline and terminal end frame are required; forged frames, NUL and
+control bytes, empty/duplicate names, compat +/- entries and a field count
+other than nine fail closed. Optional fields 3..8 must be decimal signed-long
+values, and optional reserved field 9 a decimal unsigned-long value, using
+64-bit Linux representation bounds. Signs and leading zeros on permitted
+numeric fields are supported without floating-point comparisons. This is
+structural interpretablity, not password-age policy; negative ages do not
+create password-presence exemptions or NON_COMPLIANT findings. The legacy
+account helper's unrelated UID/day bounds are not copied. The developer libc
+shadow.h confirms signed-long ages and unsigned-long reserved field; target
+libc/OpenSCAP and numeric edge cases still require real Rocky validation.
+
+Raw fields and names necessarily occur transiently in the awk parser's memory,
+never in Bash substitutions, reports, logs, temporary files or stored state.
+Only fixed non-secret tokens are buffered until the entire observation passes.
+Producer errors, pipe failures and any producer stderr invalidate evidence;
+the public wrapper suppresses all internal diagnostics, including potentially
+sensitive dependency errors. Output failure returns 2. Callers must check the
+status: stdout transport itself is not an atomic transaction. Enabling shell
+xtrace in the producer path is also invalid evidence (ERROR), with raw shadow
+fields remaining unprinted. No raw string is embedded in commands, traps or
+error messages. No executable content is run, no credential hashes calculated,
+and no true shadow/password material is used as a fixture.
+
+### Module observations and result contract
+
+check performs fresh applicability checks and two independent complete shadow
+observations. It brackets both with metadata-only stat tuples including link
+count; both tuples and both classification sequences must match. Thus even a
+same-class content mutation with observable metadata change invalidates the
+whole result. Defensive token/count validation rejects empty, unknown or
+excessive projections. ERROR takes priority over earlier EMPTY findings when
+any later proof is insufficient. Diagnostics contain fixed guidance and at
+most aggregate integer counts, never names, paths, fields or salts.
+
+For applicable systems, check returns 0 only when all validated records are
+NONEMPTY; 1 when at least one EMPTY exists after complete stable evaluation;
+2 for unreliable evidence. Established non-applicability returns existing code
+3. validate repeats the entire evaluation, without cache. apply is expressly
+observation-only: fresh check; 0 if already compliant, 3 when not applicable,
+otherwise ERROR with fixed manual-remediation guidance. There is no CHANGED,
+password change, account lock/delete or passwd/shadow edit. rollback always
+returns 0 silently and idempotently, including when input is absent.
+
+CAS Bash and Ansible fixes collect OCIL-selected users and run passwd -l;
+prose also suggests password reset. These can interrupt access, use a
+non-equivalent selector for 0 and do not establish exact protected restoration
+for this framework. They are documentary references only. No backup of account
+secrets, mutation, password utility or reset/locking operation is introduced.
+
+### Limits and validation
+
+The reads are observed stability checks, NOT an atomic snapshot or filesystem
+lock. There is no guarantee against every ABA/forged-metadata race or changes
+after the last observation. The inherited Bash open has no O_NOFOLLOW or
+O_NONBLOCK transaction; replacement by a blocking special object or stalled
+storage can block before validation. Size/entry limits do not bound I/O latency.
+ACL/SELinux and hostile kernel/filesystem behavior are not attested. Ordinary
+read atime can change; credential contents, modes, ownership and account state
+are preserved. Kernel-package presence is the pinned CPE evidence, not proof
+of runtime boot integrity or every container isolation characteristic.
+
+Local shadow-file coverage does not assert NSS/SSSD enumeration completeness,
+external account consistency or complete equivalence to a particular deployed
+OpenSCAP shadow probe. Those comparisons belong to real target validation.
+
+Tests cover empty/nonempty/zero/locks/artificial salts, ordered multiple rows,
+nine-field format and numeric representation, malformed/duplicate/empty bases,
+permission/symlink/ancestor/hardlink hazards, I/O/stderr/truncation, frame/size/
+line/count boundaries, maximum valid count, mutation/substitution/contradiction,
+ERROR precedence, freshness, metadata comparisons, applicability/bootc/N/A,
+no mutation, silent rollback, idempotence and bounded redacted diagnostics.
+All account and RPM data are artificial. Non-disclosure checks cover stdout,
+stderr and isolated xtrace with sentinel values, including fail-closed errors.
+
+Prepublication incident: the first xtrace fixture expected success even though
+trace stderr correctly invalidates the producer. Its unguarded failure left
+Bats failure traps tracing recursively. That local test run was stopped and its
+artificial-fixture trace discarded. The corrected test isolates tracing in a
+standalone Bash process, expects ERROR and verifies no sentinel in either
+channel. Production error handling was not weakened. Test-only ShellCheck
+annotations document Bats isolation; no pre-existing assertion is changed.
+
+The initial combined run after correction passes TAP 1..213: 109 library,
+52 historical CIS 7.2.1 and 52 new CIS 7.2.2 cases, no failures/skips. There
+are 89 new cases (37 library, 52 module), expecting 5645 total CI tests.
+Final regression/lint counts are recorded after verification. One final commit
+only; exact SHA/tree/compare/run/jobs/TAP are verified externally after
+publication without a second self-referential documentation commit.
+
+Remaining real Rocky Linux 10.2 work: Bash/coreutils/awk/libc/OpenSCAP/RPM versions,
+shadow mode 0000 and actual read authority, root/system/local accounts, numeric
+parsing edges, ACL/SELinux, NSS/SSSD and shadow-probe scope, licensed CIS versus
+CAS/OCIL comparison, classic containers versus kernel-bearing bootc images,
+latency/performance, second-run idempotence, reboot/post-reboot and golden image.
+Any future remediation requires separate authorization and isolated access/
+protected restoration validation. CI validates implementation, not production
+readiness or overall account security. STOP after 7.2.2; no CIS 7.2.3 work.
+
+Final locked local verification:
+
+- identity_observation TAP 1..109, all 109 successes, including all 72 unchanged
+  cases; CIS 7.2.1 TAP 1..52, all 52 successes; CIS 7.2.2 TAP 1..52, all 52
+  successes. Combined dedicated TAP 1..213, exit 0, no failure/skip.
+- Targeted regressions: 35 files in four disjoint batches (9/9/9/8 files), plans
+  445/349/349/319, total 1462 successes, all exit 0, zero failures/skips.
+  Includes existing account/password modules, CIS 7.1.1 through 7.1.13,
+  identity/library/module API regressions and both 7.2.1/7.2.2 modules. Existing
+  7.1.12 cases and new 7.2.2 fixtures exercise the reused RPM observation API;
+  no RPM-library code is changed.
+- Full suite: 245 Bats files, each covered exactly once in eight disjoint
+  batches (31/31/31/31/31/30/30/30 files). Plans
+  730/664/661/766/760/703/632/729, sum 5645 (=5556+89). All exit 0;
+  5643 successes, zero failures, exactly two inherited local Unix-socket skips
+  (CIS 6.2.1.2 unexpected socket; CIS 6.2.2.1.2 direct socket helper).
+  No new skip or weakened assertion. Exact-SHA CI must execute both and have
+  zero failures/skips.
+- Bash syntax for library/module/metadata and actual bats-preprocess followed
+  by Bash syntax for identity_observation, 7.2.1 and 7.2.2 suites: PASS.
+- ShellCheck 0.9.0 on the five changed Shell/Bats/metadata files: PASS;
+  separately all 42 files of the unchanged CI lint scope: PASS.
+- Source/test SHA-256 locks intact through validation, all 72 pre-existing
+  library test bodies preserved, git diff --check and six-path scope: PASS.
+- No actual passwd/shadow contents were read as fixtures, no credential data
+  was backed up, hashed or persisted, and no account change was performed.
+
+The exact final GitHub parent/tree/commit/compare and CI/run/attempt/jobs/TAP
+are reported externally after single-commit publication, without a second
+commit. Green CI establishes implementation/test success within this contract;
+real Rocky Linux 10.2 and OpenSCAP validation remain outstanding.
