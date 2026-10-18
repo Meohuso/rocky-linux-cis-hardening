@@ -400,3 +400,163 @@ shadow_error() {
     unknown "$P" shadow_presence
     shadow_row '!'; run rlch_identity_password_markers "$P"; [ "$status" -eq 2 ]; [ -z "$output" ]
 }
+
+
+# Raw GID field projection; artificial passwd/group rows only.
+gid_passwd() { printf 'PRIVATE_NAME:%s:%s:%s::/PRIVATE_HOME:/bin/false\n' "$1" "$2" "$3" > "$P"; }
+gid_group() { printf 'PRIVATE_GROUP:%s:%s:PRIVATE_MEMBER\n' "$1" "$2" > "$G"; }
+gid_error() { run rlch_identity_gid_fields "$1" "$2"; [ "$status" -eq 2 ]; [ -z "$output" ]; }
+@test "idobs GID passwd projection is field four not UID" {
+    gid_passwd PRIVATE_SENTINEL 11111 42
+    run rlch_identity_gid_fields "$P" passwd; [ "$status" -eq 0 ]; [ "$output" = 'PRESENT|PRESENT|DECIMAL|42' ]
+}
+@test "idobs GID group projection is field three without members" {
+    gid_group PRIVATE_SENTINEL 42
+    run rlch_identity_gid_fields "$G" group; [ "$status" -eq 0 ]; [ "$output" = 'PRESENT|PRESENT|NA|42' ]
+}
+@test "idobs GID zero and leading zero spellings preserved" {
+    for gid in 0 00 42 0042 000000000042; do
+        gid_passwd x 1001 "$gid"; gid_group x "$gid"
+        run rlch_identity_gid_fields "$P" passwd; [ "$status" -eq 0 ]; [ "$output" = "PRESENT|PRESENT|DECIMAL|$gid" ]
+        run rlch_identity_gid_fields "$G" group; [ "$status" -eq 0 ]; [ "$output" = "PRESENT|PRESENT|NA|$gid" ]
+    done
+}
+@test "idobs GID textual decimal capture is not an unsigned numeric conversion" {
+    for gid in 4294967295 18446744073709551616 000429496729599999999999999999; do
+        gid_passwd x 999999999999999999999 "$gid"; run rlch_identity_gid_fields "$P" passwd
+        [ "$status" -eq 0 ]; [ "$output" = "PRESENT|PRESENT|DECIMAL|$gid" ]
+    done
+}
+@test "idobs GID second field empty has only presence token" {
+    gid_passwd '' 1001 42; gid_group '' 42
+    run rlch_identity_gid_fields "$P" passwd; [ "$status" -eq 0 ]; [ "$output" = 'PRESENT|EMPTY|DECIMAL|42' ]
+    run rlch_identity_gid_fields "$G" group; [ "$status" -eq 0 ]; [ "$output" = 'PRESENT|EMPTY|NA|42' ]
+}
+@test "idobs GID name presence is classification not name policy" {
+    printf ':x:1001:42::/:/bin/false\n+:x:1002:42::/:/bin/false\n' > "$P"
+    run rlch_identity_gid_fields "$P" passwd; [ "$status" -eq 0 ]; [ "$output" = $'EMPTY|PRESENT|DECIMAL|42\nPRESENT|PRESENT|DECIMAL|42' ]
+}
+@test "idobs GID nondecimal UID classification contains no raw value" {
+    for uid in '' -1 +1 PRIVATE_SENTINEL ' 1'; do
+        gid_passwd x "$uid" 42; run rlch_identity_gid_fields "$P" passwd
+        [ "$status" -eq 0 ]; [ "$output" = 'PRESENT|PRESENT|OTHER|42' ]
+    done
+}
+@test "idobs GID nondecimal group ID withheld as NONE" {
+    for gid in '' -1 +42 PRIVATE_SENTINEL '42 '; do
+        gid_passwd x 1001 "$gid"; gid_group x "$gid"
+        run rlch_identity_gid_fields "$P" passwd; [ "$status" -eq 0 ]; [ "$output" = 'PRESENT|PRESENT|DECIMAL|NONE' ]
+        run rlch_identity_gid_fields "$G" group; [ "$status" -eq 0 ]; [ "$output" = 'PRESENT|PRESENT|NA|NONE' ]
+    done
+}
+@test "idobs GID aliases repeated names repeated rows and order retained" {
+    printf 'same:x:1001:42::/:/bin/false\nsame:x:1002:0042::/:/bin/false\nother:x:1001:42::/:/bin/false\n' > "$P"
+    printf 'same:x:42:\nsame:x:42:\nalias:x:0042:\n' > "$G"
+    run rlch_identity_gid_fields "$P" passwd; [ "$status" -eq 0 ]; [ "$output" = $'PRESENT|PRESENT|DECIMAL|42\nPRESENT|PRESENT|DECIMAL|0042\nPRESENT|PRESENT|DECIMAL|42' ]
+    run rlch_identity_gid_fields "$G" group; [ "$status" -eq 0 ]; [ "$output" = $'PRESENT|PRESENT|NA|42\nPRESENT|PRESENT|NA|42\nPRESENT|PRESENT|NA|0042' ]
+}
+@test "idobs GID passthrough invalid source framing is ERROR" {
+    printf 'bad:PRIVATE:1\n' > "$P"; gid_error "$P" passwd
+    printf 'bad:PRIVATE:1::extra\n' > "$G"; gid_error "$G" group
+}
+@test "idobs GID empty and absent bases ERROR" {
+    : > "$P"; : > "$G"; gid_error "$P" passwd; gid_error "$G" group
+    rm "$P" "$G"; gid_error "$P" passwd; gid_error "$G" group
+}
+@test "idobs GID unsafe permissions reject both sources" {
+    chmod 0666 "$P" "$G"; gid_error "$P" passwd; gid_error "$G" group
+    chmod 0000 "$P" "$G"; gid_error "$P" passwd; gid_error "$G" group
+}
+@test "idobs GID symlinks rejected on both sources" {
+    mv "$P" "$P.real"; ln -s "$P.real" "$P"; gid_error "$P" passwd
+    mv "$G" "$G.real"; ln -s "$G.real" "$G"; gid_error "$G" group
+}
+@test "idobs GID ancestor aliases rejected" {
+    mkdir "$BATS_TEST_TMPDIR/dir"; cp "$P" "$BATS_TEST_TMPDIR/dir/passwd"
+    ln -s "$BATS_TEST_TMPDIR/dir" "$BATS_TEST_TMPDIR/alias"; gid_error "$BATS_TEST_TMPDIR/alias/passwd" passwd
+}
+@test "idobs GID hardlinks rejected without tightening old projections" {
+    ln "$P" "$P.alias"; ln "$G" "$G.alias"; gid_error "$P" passwd; gid_error "$G" group
+    run rlch_identity_rows "$P" passwd; [ "$status" -eq 0 ]
+}
+@test "idobs GID directory and FIFO rejected without opening bodies" {
+    rm "$P"; mkdir "$P"; gid_error "$P" passwd; rmdir "$P"; mkfifo "$P"; gid_error "$P" passwd
+}
+@test "idobs GID NUL and controls fail closed" {
+    printf 'name:PRIVATE\000:1:42::/:/bin/false\n' > "$P"; gid_error "$P" passwd
+    printf 'name:x:42:PRIVATE\r\n' > "$G"; gid_error "$G" group
+}
+@test "idobs GID missing final newline rejected" {
+    printf 'name:x:1:42::/:/bin/false' > "$P"; gid_error "$P" passwd
+}
+@test "idobs GID complete-row truncation rejected for passwd and group" {
+    printf 'second:x:42:\n' >> "$G"
+    rlch_identity_stream() { /usr/bin/head -n 1; }
+    gid_error "$P" passwd; gid_error "$G" group
+}
+@test "idobs GID strengthened byte check does not silently change old UID projection" {
+    rlch_identity_stream() { /usr/bin/head -n 1; }
+    run rlch_identity_rows "$P" passwd; [ "$status" -eq 0 ]; [ "$output" = 0 ]
+    gid_error "$P" passwd
+}
+@test "idobs GID mid-row zero-byte and appended-record truncation rejected" {
+    rlch_identity_stream() { /usr/bin/head -c 10; }; gid_error "$P" passwd
+    rlch_identity_stream() { :; }; gid_error "$P" passwd
+    rlch_identity_stream() { /usr/bin/cat; printf 'extra:x:1:42::/:/bin/false\n'; }; gid_error "$P" passwd
+}
+@test "idobs GID producer failure withholds partial projection" {
+    rlch_identity_stream() { /usr/bin/cat; return 91; }; gid_error "$P" passwd; gid_error "$G" group
+}
+@test "idobs GID producer stderr withheld even on exit zero" {
+    rlch_identity_stream() { /usr/bin/cat; printf 'PRIVATE_SALT_SENTINEL\n' >&2; }; gid_error "$P" passwd; gid_error "$G" group
+}
+@test "idobs GID malformed later record withholds prior projection" {
+    printf 'BROKEN_PRIVATE_SENTINEL\n' >> "$P"; gid_error "$P" passwd
+}
+@test "idobs GID mutation during observation rejected" {
+    rlch_identity_stream() { /usr/bin/cat; printf 'extra:x:1:42::/:/bin/false\n' >> "$P"; }; gid_error "$P" passwd
+}
+@test "idobs GID group mutation during observation rejected" {
+    rlch_identity_stream() { /usr/bin/cat; printf 'extra:x:42:\n' >> "$G"; }; gid_error "$G" group
+}
+@test "idobs GID substitution and link changes detected" {
+    rlch_identity_stream() { /usr/bin/cat; cp "$P" "$P.new"; mv "$P.new" "$P"; }; gid_error "$P" passwd
+    rlch_identity_stream() { /usr/bin/cat; ln "$G" "$G.alias"; }; gid_error "$G" group
+}
+@test "idobs GID forged terminal frame rejected" {
+    printf 'RLCH-IDENTITY-END\n' >> "$P"; gid_error "$P" passwd
+}
+@test "idobs GID size count and line bounds enforced" {
+    awk 'BEGIN {printf "name:x:1:";for(i=0;i<16400;i++) printf "0";print "::/:/bin/false"}' > "$P"; gid_error "$P" passwd
+    awk 'BEGIN {for(i=0;i<65537;i++) print "g"i":x:42:"}' > "$G"; gid_error "$G" group
+    awk 'BEGIN {for(i=0;i<500;i++) {printf "u%d:x:1:42:",i;for(j=0;j<10000;j++) printf "a";print ":/:/bin/false"}}' > "$P"; gid_error "$P" passwd
+}
+@test "idobs GID maximum valid count retains duplicates" {
+    awk 'BEGIN {for(i=0;i<65536;i++) print "same:x:0042:"}' > "$G"
+    rlch_identity_gid_fields "$G" group > "$BATS_TEST_TMPDIR/result"; [ "$(wc -l < "$BATS_TEST_TMPDIR/result")" -eq 65536 ]
+}
+@test "idobs GID output failure returns silent ERROR" {
+    result=0; rlch_identity_gid_fields "$P" passwd > /dev/full 2> "$BATS_TEST_TMPDIR/err" || result=$?
+    [ "$result" -eq 2 ]; [ ! -s "$BATS_TEST_TMPDIR/err" ]
+}
+@test "idobs GID invalid calls and historical kinds remain closed" {
+    run rlch_identity_gid_fields; [ "$status" -eq 2 ]; [ -z "$output" ]
+    run rlch_identity_gid_fields "$P" shadow; [ "$status" -eq 2 ]; [ -z "$output" ]
+    run rlch_identity_gid_fields "$P" passwd extra; [ "$status" -eq 2 ]; [ -z "$output" ]
+    unknown "$P" gid_passwd; unknown "$G" gid_group
+}
+@test "idobs GID stdout stderr and xtrace do not expose private fields" {
+    gid_passwd '$6$PRIVATE_SALT$PRIVATE_SENTINEL' 11111 0042
+    rlch_identity_gid_fields "$P" passwd > "$BATS_TEST_TMPDIR/out" 2> "$BATS_TEST_TMPDIR/err"
+    [ "$(cat "$BATS_TEST_TMPDIR/out")" = 'PRESENT|PRESENT|DECIMAL|0042' ]; [ ! -s "$BATS_TEST_TMPDIR/err" ]
+    result=0
+    bash -c 'source "$1"; set -x; rc=0; rlch_identity_gid_fields "$2" passwd || rc=$?; set +x; exit "$rc"' bash \
+        "$BATS_TEST_DIRNAME/../lib/identity_observation.sh" "$P" > "$BATS_TEST_TMPDIR/out" 2> "$BATS_TEST_TMPDIR/err" || result=$?
+    [ "$result" -eq 2 ]; [ ! -s "$BATS_TEST_TMPDIR/out" ]; [[ "$(cat "$BATS_TEST_TMPDIR/err")" != *PRIVATE* ]]
+}
+@test "idobs GID deterministic and fresh without fixture mutation" {
+    gid_passwd PRIVATE_SENTINEL 11111 0042; before="$(stat -c '%d:%i:%a:%u:%g:%s:%y:%z' "$P")"
+    a="$(rlch_identity_gid_fields "$P" passwd)"; b="$(rlch_identity_gid_fields "$P" passwd)"; [ "$a" = "$b" ]
+    [ "$before" = "$(stat -c '%d:%i:%a:%u:%g:%s:%y:%z' "$P")" ]
+    gid_passwd x 11111 42; [ "$(rlch_identity_gid_fields "$P" passwd)" != "$a" ]
+}

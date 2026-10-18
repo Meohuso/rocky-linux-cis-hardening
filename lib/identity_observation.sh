@@ -57,6 +57,22 @@ rlch_identity_shadow_password_presence() {
     _rlch_identity_rows "$1" shadow_presence 2>/dev/null || return 2
 }
 
+# PATH passwd|group => NAME_PRESENT|FIELD2_PRESENT|UID_KIND|GID_LITERAL.
+# Presence tokens: EMPTY/PRESENT. UID_KIND: DECIMAL/OTHER (passwd), NA (group).
+# GID_LITERAL: exact ASCII decimal spelling, or NONE for a nondecimal field.
+# Seven/four-field records only; retain duplicates and aliases. Numeric ranges,
+# name policy and capture selection are deliberately not inferred by this API.
+# No names, UID values, credential fields or member lists leave the parser.
+# Strict single-link/exact-byte guards; 0/2, diagnostics suppressed.
+rlch_identity_gid_fields() {
+    [[ $# -eq 2 ]] || return 2
+    case "$2" in
+        passwd) _rlch_identity_rows "$1" gid_passwd 2>/dev/null || return 2 ;;
+        group) _rlch_identity_rows "$1" gid_group 2>/dev/null || return 2 ;;
+        *) return 2 ;;
+    esac
+}
+
 _rlch_identity_observation_stamp() {
     if [[ "$2" == shadow_presence ]]; then
         _rlch_identity_file_stamp "$1" true
@@ -66,9 +82,10 @@ _rlch_identity_observation_stamp() {
 }
 
 _rlch_identity_rows() (
-    local file="$1" kind="$2" before opened after fd rows expected=0 links=''
+    local file="$1" kind="$2" before opened after fd rows expected=0 links='' strict=0
+    case "$kind" in password_markers|shadow_presence|gid_passwd|gid_group) strict=1;; esac
     before="$(_rlch_identity_observation_stamp "$file" "$kind")" || return 2
-    if [[ "$kind" == password_markers || "$kind" == shadow_presence ]]; then
+    if [[ "$strict" -eq 1 ]]; then
         links="$(/usr/bin/stat -c '%h' -- "$file" 2>/dev/null)" || return 2
         [[ "$links" == 1 ]] || return 2
         expected="${before#*|}"; expected="${expected#*|}"; expected="${expected#*|}"
@@ -79,7 +96,7 @@ _rlch_identity_rows() (
     { exec {fd}<"$file"; } 2>/dev/null || return 2
     opened="$(LC_ALL=C /usr/bin/stat -Lc '%u|%g|%a|%d|%i|%s|%y|%z' -- "/proc/self/fd/$fd" 2>/dev/null)" || return 2
     [[ "$before" == "$opened" ]] || return 2
-    if [[ "$kind" == password_markers || "$kind" == shadow_presence ]]; then
+    if [[ "$strict" -eq 1 ]]; then
         [[ "$(/usr/bin/stat -Lc '%h' -- "/proc/self/fd/$fd" 2>/dev/null)" == 1 ]] || return 2
     fi
     set -o pipefail
@@ -88,7 +105,7 @@ _rlch_identity_rows() (
         { rlch_identity_stream <&"$fd" 2>&1 1>&3 | /usr/bin/head -c 1 | /usr/bin/awk 'NR {exit 2}'; } 3>&1 || exit 2
         printf 'RLCH-IDENTITY-END\n'
       } |
-      /usr/bin/head -c 4194305 | LC_ALL=C /usr/bin/awk -v kind="$kind" -v expected="$expected" '
+      /usr/bin/head -c 4194305 | LC_ALL=C /usr/bin/awk -v kind="$kind" -v expected="$expected" -v strict="$strict" '
       function invalid() {bad=1;exit 2}
       function uint(s) {return s ~ /^[0-9]+$/ && length(s)<=10 && s+0<=4294967294}
       function shadow_number(s,flag,negative,bound) {
@@ -119,6 +136,15 @@ _rlch_identity_rows() (
          next
        }
        count=split($0,f,":")
+       if(kind=="gid_passwd" || kind=="gid_group") {
+         if((kind=="gid_passwd" && count!=7) || (kind=="gid_group" && count!=4)) invalid()
+         name_present=(length(f[1]) ? "PRESENT" : "EMPTY")
+         field2_present=(length(f[2]) ? "PRESENT" : "EMPTY")
+         uid_kind=(kind=="gid_group" ? "NA" : (f[3] ~ /^[0-9]+$/ ? "DECIMAL" : "OTHER"))
+         gid=(kind=="gid_group" ? f[3] : f[4])
+         out[++n]=name_present "|" field2_present "|" uid_kind "|" (gid ~ /^[0-9]+$/ ? gid : "NONE")
+         next
+       }
        if(kind=="shadow_presence") {
          if(count!=9 || f[1]=="" || f[1] ~ /^[+-]/ || seen[f[1]]++) invalid()
          # Structural parsing, not an age policy: optional decimal signed-long
@@ -134,13 +160,13 @@ _rlch_identity_rows() (
        if(kind=="password_markers") out[++n]=(f[2]=="x" ? "X" : (f[2]=="*" ? "STAR" : "OTHER"))
        else out[++n]=sprintf("%.0f",f[3]+0)
       }
-      END {if(bad || !ended || !n || ((kind=="password_markers" || kind=="shadow_presence") && bytes-18!=expected) || (kind=="nss" && (!seen["passwd"] || !seen["group"]))) exit 2
+      END {if(bad || !ended || !n || (strict && bytes-18!=expected) || (kind=="nss" && (!seen["passwd"] || !seen["group"]))) exit 2
            for(i=1;i<=n;i++) print out[i]}'
     )" || return 2
     exec {fd}<&-
     after="$(_rlch_identity_observation_stamp "$file" "$kind")" || return 2
     [[ "$before" == "$after" ]] || return 2
-    if [[ "$kind" == password_markers || "$kind" == shadow_presence ]]; then
+    if [[ "$strict" -eq 1 ]]; then
         [[ "$(/usr/bin/stat -c '%h' -- "$file" 2>/dev/null)" == 1 ]] || return 2
     fi
     printf '%s\n' "$rows"

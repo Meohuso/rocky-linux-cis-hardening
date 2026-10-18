@@ -3251,3 +3251,220 @@ The exact final GitHub parent/tree/commit/compare and CI/run/attempt/jobs/TAP
 are reported externally after single-commit publication, without a second
 commit. Green CI establishes implementation/test success within this contract;
 real Rocky Linux 10.2 and OpenSCAP validation remain outstanding.
+
+## CIS 7.2.3 - Primary group references (literal CAS local captures)
+
+Baseline: CIS Red Hat Enterprise Linux 9 v2.0.0, Level 1 Server, future runtime
+validation Rocky Linux 10.2. ComplianceAsCode/content pin
+`a4b23038aaf65a25d6e88baa2800c03d09fda577`, mapping
+`products/rhel9/controls/cis_rhel9.yml`, 7.2.3 automated, primary rule
+`gid_passwd_group_same`, RHEL9 CCE-83613-0. XCCDF:
+`xccdf_org.ssgproject.content_rule_gid_passwd_group_same` (verified rule stem
+and CAS OSCAP_RULE prefix). Inspected YAML, OVAL, OCIL, both rule fixtures,
+STIG policy text, generation constants and rule-directory contents at the pin.
+There is no rule-specific Bash/Ansible remediation, template, variable or SCE
+in this rule directory. Its local_variable is part of the OVAL itself. The
+fixture which deletes users is test setup only and was never run; neither
+fixture nor pwck was executed against actual runner identity files.
+RHEL10's CCE-87466-9 and interactive-only STIG prose do not replace this CIS
+mapping or its all-captured-users OVAL. The full licensed benchmark is not
+supplied; the exact selected CAS evidence/filters are the documented basis.
+
+### Literal OVAL policy, exclusions and degenerate collections
+
+The group textfilecontent54 pattern is `^[^:]+:[^:]+:([0-9]+):`, capturing
+field 3 from the local /etc/group. The passwd pattern is
+`^[^:]+:[^:]+:[0-9]+:([0-9]+):`, capturing the primary GID in field 4 from
+local /etc/passwd. Both use instances >=1. The group captures become a
+string local_variable. The passwd test uses check=all, check_existence=all_exist
+and a state subexpression equals, datatype=string, var_check="at least one".
+
+Consequently 0042 and 42 are DISTINCT captures; 0 and 00 also differ. Equal
+leading-zero spellings match. There is no UID/GID numeric range conversion,
+uniqueness condition, root/system-account exemption or shell filter in this
+OVAL. Large decimal spellings remain lexical captures, not assertions that
+such accounts are valid kernel identities. Duplicate captures, names and group
+aliases remain admissible for this reference check; uniqueness is not audited.
+
+Both patterns require nonempty name and second field. Passwd additionally
+requires decimal-only UID and primary GID; group requires decimal-only GID.
+Thus structurally framed rows with an empty second field, empty name or
+nondecimal identifier can be excluded by the literal OVAL regex. No arbitrary
+account-name grammar or +/- NSS-compat interpretation replaces these text
+patterns. A plus name with populated matching fields is a literal capture;
+a conventional empty compat row has no such capture. These exclusions are
+CAS coverage limits, not proof that excluded accounts are secure. No automatic
+repair/normalization of the pinned rule is performed.
+
+The general OVAL schema documents all_exist=false when a regex has no matches:
+https://oval.mitre.org/language/version5.10/ovaldefinition/documentation/oval-definitions-schema.html
+It also documents a missing variable value in a state as an error:
+https://oval.mitre.org/language/version5.10.1/ovaldefinition/documentation/oval-definitions-schema.html
+For complete, nonempty, structurally valid source files: zero selected passwd
+captures gives NON_COMPLIANT for all_exist, never vacuous SUCCESS. With selected
+passwd captures but zero group captures, the state variable has no values and
+RLCH returns ERROR. If both selections are empty, existence already fails,
+without a state comparison. Raw empty/missing files, malformed framing and any
+unreliable observation instead give ERROR before policy evaluation. These
+cases distinguish false existence from unavailable comparison evidence.
+
+No NSS/SSSD, getent or numeric group lookup replaces either local source.
+The OVAL is a local textfile probe, not account enumeration through NSS. Its
+YAML has no system_with_kernel applicability; the preceding shadow module's
+kernel/package/container gate is intentionally not copied. The framework target
+remains Rocky hosts; fixtures do not establish full OpenSCAP product/CPE parity.
+OCIL's pwck -qr checks more than these exact captures and may produce unrelated
+findings; its status/output is not used. CAS remediation prose suggests editing
+GID references or defining groups, without an exact reversible transaction.
+
+### Authorized additive library contract
+
+The user explicitly authorized six files for 7.2.3 alone: identity_observation
+library/tests, new 7/2/3 module/metadata/tests and this document. All 109 existing
+identity tests remain byte-for-byte; no old module, other library/test, workflow,
+AGENTS.md or CAS source is changed.
+
+New public API: `rlch_identity_gid_fields PATH passwd|group`, exactly two
+arguments. One four-field projection per structurally validated input record,
+in input order:
+
+`NAME_PRESENCE|FIELD2_PRESENCE|UID_KIND|GID_LITERAL`
+
+- NAME_PRESENCE and FIELD2_PRESENCE are EMPTY or PRESENT.
+- UID_KIND is DECIMAL or OTHER for passwd; always NA for group. No UID value.
+- GID_LITERAL is the EXACT ASCII-digit spelling of passwd field 4 / group
+  field 3, or fixed token NONE if that field is not decimal-only. No cast,
+  sprintf, leading-zero removal or numerical interpretation is applied.
+
+It returns 0 only after complete validated observation, or 2 without sensitive
+diagnostics on invalid/unreadable/incomplete/unstable proof or output failure.
+It emits no name, credential/hash fragment/salt, home, shell or member list.
+Even nondecimal GID/UID strings are replaced by non-sensitive classifications,
+never returned raw. Necessary decimal GID text is the only identifier value
+exposed to the policy caller; the module does not log those values.
+
+The library provides field facts, not a CIS include/exclude decision. The
+module alone applies the pinned name/field2/UID/GID predicates, all_exist and
+exact membership policy. A row can be well framed yet excluded by those
+predicates; wrong field count/control/NUL/truncated data is invalid evidence.
+All duplicates and aliases are retained. Empty names are represented by a
+presence flag, not disclosed or silently filtered inside the generic reader.
+
+Seven/four colon-separated fields are required. Numeric spelling beyond the
+unsigned-ID range and nondecimal fields are classified without inventing a
+kernel/account validity policy; this is exact local-text observation, not
+libc account validation. Existing numeric/duplicate-name policy remains intact
+for historic projections, which have different consumers.
+
+### Completeness, metadata and compatibility
+
+The authorized library reuses the existing reader and metadata mechanisms.
+Canonical absolute regular readable files, no symlink/ancestor aliases, owner
+root or effective caller, readable mode bits and no group/other writable bits.
+Numeric UID/GID, mode, device/inode, size, mtime/ctime are checked across path,
+opened descriptor and post-read path. New projections also require nlink=1
+before/opened/after. File metadata permission policy is not redefined as a
+separate CIS 7.1 control; group identity is observed for stability.
+
+Limits remain 65536 records, 16384 input bytes per physical line and 4194304
+framed bytes. The inherited 18-byte terminal frame leaves at most 4194286
+source bytes. Exact bytes read must equal the observed stable size. Silent
+complete-row truncation, missing final newline, mid-record truncation, forged
+terminal frames, appended data, malformed field counts, NUL/control bytes,
+producer errors, pipe errors and ANY producer stderr give ERROR. Whole results
+are held until all input and metadata checks pass; no partial proof is emitted
+as successful. Standard stdout itself is not transactional: check exit status.
+No raw credential data is stored in Bash, disk scratch, state, report or log;
+raw input is transient in awk only, with non-secret projections buffered.
+
+The private reader computes a strict-mode flag for the two existing strict
+projections and the two new GID projections. Historic passwd/group/nss
+projections keep their previous behavior, including their documented inability
+to detect a silent successful complete-record short read. A new regression
+explicitly contrasts that legacy behavior with the new API's ERROR, without
+silently changing prior callers. Any broader historic-reader fix requires a
+separate decision; this control does not claim that limitation was fixed for
+all consumers. Existing public stamp, numeric rows, passwd password markers
+and shadow presence signatures/formats/result codes remain compatible.
+
+### Two-source observation, statuses and confidentiality
+
+The module brackets four complete calls (passwd1, group1, passwd2, group2)
+with fresh before/after stamps for BOTH files. Each file's projections and
+stamps must agree. Both collections are validated before a finding; malformed
+later data, second-read failure, missing state variable or contradictory
+observation gives ERROR over an earlier missing-reference indication. Defensive
+projection decoding accepts only fixed flags and decimal-or-NONE data, caps
+65536 rows/source, 16480 projected bytes/row and 6 MiB/projection.
+
+Group membership uses prefixed associative string keys, retaining leading
+zeros and avoiding arithmetic evaluation. No numeric comparison, deduplication
+requirement or uniqueness finding is introduced. Repeated passwd references
+are counted per selected row; group aliases can satisfy the same capture.
+Diagnostics contain only fixed guidance and aggregate counts. No account/group
+name, raw GID, UID, field value or member list is printed by public check,
+validate or apply. Under xtrace the producer's trace stderr invalidates new API
+evidence, with credential fields remaining unprinted. Tests isolate that trace
+from Bats traps and use only artificial values.
+
+check: fresh evaluation, success 0 for satisfied complete captures, finding 1
+for a missing exact reference or failed all_exist, ERROR 2 for insufficient
+proof. validate repeats everything with no cache. apply is observation-only:
+fresh check, success only if already compliant, otherwise ERROR with fixed
+manual guidance. No group creation, account/GID change, passwd/group/shadow/
+gshadow write, user deletion, password utility, credential hash or persisted
+backup. No CHANGED. rollback is silent, idempotent success even if files vanish.
+Atomic and exactly reversible identity remediation is not established here;
+changing group assignments may alter existing access and ownership semantics.
+
+### Residual limits and validation
+
+Repeated reads/stamps detect observable races, NOT an atomic inter-file
+snapshot. ABA/forged metadata, concurrent changes after the last observation,
+ACL/SELinux and hostile kernel/filesystem behavior are not certified. Inherited
+Bash open is not an O_NOFOLLOW/O_NONBLOCK transaction; substitution by a special
+object or stalled storage can block. Bounds limit bytes/rows, not I/O latency.
+Ordinary read atime can change; credential contents, modes and identity state
+are preserved. Stable projections cannot establish every production identity
+policy or the validity/security of records excluded by CAS.
+
+Initial dedicated verification: TAP 1..302, all pass, zero failures/skips:
+143 identity tests (109 unchanged +34 new), 52 CIS 7.2.1, 52 CIS 7.2.2 and
+55 CIS 7.2.3. There are 89 new cases, expecting 5734 total CI tests. Cases cover
+UID versus primary GID, exact and zero-prefixed values, large decimal capture,
+name/field2/nondecimal exclusions, duplicates/aliases, empty collections and
+all_exist/state-variable edge cases, two-source corruption/failure/truncation,
+byte/count/line limits, links/special objects, repeated observations and metadata
+mutation, ERROR precedence, privacy, freshness/idempotence, no mutation and
+silent rollback. Only artificial account/group files are used. No preliminary
+code/test correction was needed after their first combined run. Final complete
+regression and lint counts follow after verification.
+
+Remaining real Rocky Linux 10.2 validation: Bash/awk/coreutils/OpenSCAP versions,
+exact generated CAS textfilecontent54 captures and empty-variable behavior,
+local system accounts/groups and noncanonical spellings, NSS/SSSD scope versus
+local files, SELinux/ACLs, producer/IO behavior and resource/performance bounds,
+inter-file update races, reboot/post-reboot, repeat idempotence and golden image.
+Check the licensed benchmark against the pinned CAS exclusions rather than
+assuming CI proves complete CIS or operational identity-policy conformity.
+Any future remediation requires separate isolated access/restoration validation.
+Only one final commit; final SHA/tree/compare/CI/run/jobs/TAP are verified
+externally after publication, without a second documentation commit.
+STOP after CIS 7.2.3; no 7.2.4 or other subsequent control work.
+
+### Final local validation (before the single final publication)
+
+- Dedicated TAP 1..302: 302 pass, zero failure/skip. Identity 143 includes
+  the 109 unchanged historical tests and 34 additions; CIS 7.2.3 has 55 tests.
+- Targeted regression: 36 files, 1551 pass, zero failure/skip; batch plans
+  381, 467, 362, 341. Includes prior account modules and CIS 7.1.1--7.1.13.
+- Complete suite: all 246 Bats files exactly once in eight disjoint batches;
+  5734 planned, 5732 pass, zero failure, two historical local socket skips.
+  Plans: 706, 641, 679, 798, 637, 908, 629, 736. CI must have zero skips.
+- Bash syntax and genuine Bats preprocessing/syntax passed. ShellCheck 0.9.0
+  passed for the five changed code/test files and the unchanged 42-file CI
+  scope. git diff --check passed. No workflow or fixture weakening.
+- Five code/test SHA256 locks remained identical through all regressions.
+  Existing identity tests remain a byte-for-byte prefix of the extended file.
+- Exactly the six authorized paths comprise this control; no seventh file,
+  shared-library incompatibility or real identity-file mutation was introduced.
