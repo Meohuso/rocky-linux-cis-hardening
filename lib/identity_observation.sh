@@ -73,6 +73,22 @@ rlch_identity_gid_fields() {
     esac
 }
 
+# PASSWD_PATH NSS_PATH => SOURCE|FILES or SOURCE|OTHER, then UID|DECIMAL.
+# Each UID is canonical decimal in 0..4294967294; duplicates are retained.
+# Source classification describes the explicit passwd database declaration:
+# FILES means the single token files, optionally followed by a comment. Other
+# valid nonempty declarations are OTHER; no CIS result is decided here.
+# Exact-byte/single-link guards apply to BOTH sources. No credential/name/raw
+# NSS configuration is emitted. No partial projection on read/parse failure.
+# Caller must bracket/compare complete observations; no inter-file transaction.
+rlch_identity_uid_values() {
+    [[ $# -eq 2 ]] || return 2
+    local sources values
+    sources="$(_rlch_identity_rows "$2" uid_sources 2>/dev/null)" || return 2
+    values="$(_rlch_identity_rows "$1" uid_values 2>/dev/null)" || return 2
+    printf '%s\n%s\n' "$sources" "$values" || return 2
+}
+
 _rlch_identity_observation_stamp() {
     if [[ "$2" == shadow_presence ]]; then
         _rlch_identity_file_stamp "$1" true
@@ -83,7 +99,7 @@ _rlch_identity_observation_stamp() {
 
 _rlch_identity_rows() (
     local file="$1" kind="$2" before opened after fd rows expected=0 links='' strict=0
-    case "$kind" in password_markers|shadow_presence|gid_passwd|gid_group) strict=1;; esac
+    case "$kind" in password_markers|shadow_presence|gid_passwd|gid_group|uid_values|uid_sources) strict=1;; esac
     before="$(_rlch_identity_observation_stamp "$file" "$kind")" || return 2
     if [[ "$strict" -eq 1 ]]; then
         links="$(/usr/bin/stat -c '%h' -- "$file" 2>/dev/null)" || return 2
@@ -108,6 +124,12 @@ _rlch_identity_rows() (
       /usr/bin/head -c 4194305 | LC_ALL=C /usr/bin/awk -v kind="$kind" -v expected="$expected" -v strict="$strict" '
       function invalid() {bad=1;exit 2}
       function uint(s) {return s ~ /^[0-9]+$/ && length(s)<=10 && s+0<=4294967294}
+      function uid_decimal(s) {
+        if(s !~ /^[0-9]+$/) return "INVALID"
+        sub(/^0+/,"",s);if(s=="") s="0"
+        if(length(s)>10 || (length(s)==10 && "x"s>"x4294967294")) return "INVALID"
+        return s
+      }
       function shadow_number(s,flag,negative,bound) {
         if(s=="") return 1
         if(s !~ /^[+-]?[0-9]+$/) return 0
@@ -120,8 +142,20 @@ _rlch_identity_rows() (
       {bytes+=length($0)+1
        if(bytes>4194304 || NR>65537 || length($0)>16384 || ended || index($0,sprintf("%c",0))) invalid()
        if($0=="RLCH-IDENTITY-END") {ended=1;next}
-       clean=$0;if(kind=="nss") gsub(/\t/,"",clean)
+       clean=$0;if(kind=="nss" || kind=="uid_sources") gsub(/\t/,"",clean)
        if(clean ~ /[[:cntrl:]]/) invalid()
+       if(kind=="uid_sources") {
+         if($0 ~ /^[[:space:]]*(#|$)/) next
+         line=$0;sub(/^[[:space:]]*/,"",line)
+         if(line ~ /^passwd([[:space:]:]|$)/) {
+           if(line !~ /^passwd:/ || seen["passwd"]++) invalid()
+           sub(/^passwd:[[:space:]]*/,"",line);sub(/#.*/,"",line)
+           sub(/[[:space:]]*$/,"",line)
+           if(line=="") invalid()
+           out[++n]=(line=="files" ? "SOURCE|FILES" : "SOURCE|OTHER")
+         }
+         next
+       }
        if(kind=="nss") {
          if($0 ~ /^[[:space:]]*(#|$)/) next
          # Unsupported spelling of either key must not silently disappear.
@@ -136,6 +170,18 @@ _rlch_identity_rows() (
          next
        }
        count=split($0,f,":")
+       if(kind=="uid_values") {
+         # Native files enumeration skips leading whitespace, blank lines and
+         # comments before parsing accounts. Controls remain unsupported above.
+         line=$0;sub(/^[[:space:]]*/,"",line)
+         if(line ~ /^(#|$)/) next
+         count=split(line,f,":")
+         if(count!=7 || f[1]=="" || f[1] ~ /^[+-]/ || seen[f[1]]++) invalid()
+         uid=uid_decimal(f[3]);gid=uid_decimal(f[4])
+         if(uid=="INVALID" || gid=="INVALID") invalid()
+         out[++n]="UID|" uid
+         next
+       }
        if(kind=="gid_passwd" || kind=="gid_group") {
          if((kind=="gid_passwd" && count!=7) || (kind=="gid_group" && count!=4)) invalid()
          name_present=(length(f[1]) ? "PRESENT" : "EMPTY")

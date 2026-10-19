@@ -3468,3 +3468,200 @@ STOP after CIS 7.2.3; no 7.2.4 or other subsequent control work.
   Existing identity tests remain a byte-for-byte prefix of the extended file.
 - Exactly the six authorized paths comprise this control; no seventh file,
   shared-library incompatibility or real identity-file mutation was introduced.
+
+
+## CIS 7.2.4 - Numeric UID uniqueness with explicit files-only NSS coverage
+
+Baseline: CIS RHEL9 v2.0.0, Level 1 Server, future Rocky Linux 10.2 target.
+ComplianceAsCode/content pin a4b23038aaf65a25d6e88baa2800c03d09fda577;
+products/rhel9/controls/cis_rhel9.yml selects account_unique_id, automated,
+l1_server and l1_workstation. RHEL9 CCE-88493-2; XCCDF
+xccdf_org.ssgproject.content_rule_account_unique_id (CAS rule stem and
+OSCAP_RULE prefix verified). RHEL10 CCE-89811-4 is context, not the baseline.
+Inspected rule YAML, OVAL, OCIL, policy/STIG, both fixtures, platform YAML and
+OVAL, generation constants and related existing identity/RPM interfaces.
+No rule-specific Bash/Ansible remediation, template or SCE exists here.
+The failing fixture appends two test accounts with UID 30090; the passing
+fixture is empty. Neither was executed against runner identities.
+
+### Normative method and explicit NSS arbitration before implementation
+
+The OVAL password_object collects username pattern .* without root, shell,
+interactive-user or UID threshold filters. It compares count(user_id) with
+count(unique(user_id)) using integer count variables and equality. This is
+not the preceding GID rule's local textfilecontent54 lexical capture.
+OVAL unique treats its inputs as strings; the observed OpenSCAP 1.4.4 probe
+creates user_id as OVAL_DATATYPE_INTEGER from uid_t. Canonical numeric UID
+values therefore collapse 42/0042 and 0/000, without preserving the original
+passwd spelling. UID 0 and system accounts have no uniqueness exemption.
+OCIL awk -F ":" 'list[$3]++{print $1, $3}' /etc/passwd and its interactive-user
+prose do not define all of the automated collection semantics. No shell or
+UID_MIN logic is imported. No remediation is automatically safe: changes to
+UIDs can alter access, ownership and identity accountability.
+
+Primary implementation context, not a pinned Rocky runtime guarantee:
+https://github.com/OpenSCAP/openscap/blob/1.4.4/src/OVAL/probes/unix/password_probe.c
+https://oval.mitre.org/language/version5.11/ovaldefinition/documentation/oval-definitions-schema.html
+OpenSCAP 1.4.4 uses getpwent() in active mode, potentially collecting external
+NSS identities. Its offline branch uses fgetpwent on the alternate local file;
+this does not establish complete active NSS equivalence. The CAS YAML comment
+about offline support is not a guarantee for every scanner release.
+
+Decision presented before code: a useful conditional files-only strategy.
+No external NSS enumeration is attempted. A complete, stable explicit passwd
+source declaration consisting solely of files (optional comment/whitespace)
+is required before either SUCCESS or NON_COMPLIANT. SSSD, LDAP, compat,
+altfiles, repeated files, action clauses, mixed sources and any other explicit
+source produce ERROR, even when local duplicates exist. No successful getent
+command or mock is treated as proof of external enumeration completeness.
+The group/hosts source lists do not select passwd identities; they may contain
+external sources without invalidating an explicitly files-only passwd list.
+Missing/duplicate/empty/ambiguous passwd declarations and missing/empty/unsafe
+configuration files also produce ERROR. No implicit default source is assumed.
+This is supported configured-files coverage, not a general NSS/SSSD audit.
+A files-only configuration is a precondition, never an assertion that external
+identities could be enumerated completely. Runtime libc/NSS cache behavior and
+actual OpenSCAP parity remain part of real-host validation.
+
+SUCCESS: applicability established, explicit files-only passwd configuration,
+complete stable supported passwd records, equal repeated projections and
+metadata, all numeric UID values unique. NON_COMPLIANT: the same prerequisites
+with fewer unique numeric values than account entries. ERROR: any uncertainty
+in those prerequisites, invalid/unstable/partial data, unsupported representation
+or coverage. Unsupported external sources take precedence over a local finding.
+An empty/missing passwd file is insufficient evidence, not vacuous conformity;
+this conservative result does not invent the abstract count() empty-collection
+behavior of a generated OpenSCAP evaluation. Duplicate account names yield
+ERROR, not a separate CIS name-uniqueness finding or a guessed SC item-dedup
+result. Item consolidation/duplicate-name behavior must be compared with the
+actual scanner before expanding that supported domain.
+
+Pinned system_with_kernel: RHEL9 kernel-core package present, including kernel-
+bearing bootc images/systems; classic containers without it are not applicable.
+The existing bounded RPM inventory API proves present/absent or ERROR. Failed,
+empty, malformed or unstable inventories cannot prove absence. Applicability
+is rechecked after the observation. No environment-file container heuristic
+or execution of account programs is introduced.
+
+### Additive integrated UID/source API and historical compatibility
+
+Public API: rlch_identity_uid_values PASSWD_PATH NSS_PATH, exactly two arguments.
+Output on successful complete per-source observations, in order:
+
+SOURCE|FILES (or SOURCE|OTHER), then one UID|DECIMAL per passwd record.
+
+The integrated API includes only the source classification needed to assess the
+UID collection's coverage. No additional public NSS API, raw configuration,
+account name, GID, shell, credential, hash fragment or member list is emitted.
+The library classifies input facts; only the module assigns CIS result codes.
+SOURCE|OTHER is a valid generic observation (return 0), not a library finding.
+Malformed, duplicate, absent or empty passwd source declarations return 2.
+The NSS parser permits tabs in non-secret configuration and ignores unrelated
+databases; all bytes/lines, including ignored data, remain bounded and counted.
+
+Native files enumeration skips blank/comment lines and leading ASCII spaces;
+new UID observation does so too, while control/tab-containing passwd records
+remain unsupported and fail closed. See glibc-2.39 nss/nss_readline.c and
+nss/fgetpwent_r.c: numeric fields use base 10, matching the probe context.
+Seven colon-separated account fields, nonempty non-compat account names,
+no duplicate names, decimal UID and primary GID are required in this supported
+local parsing domain. Empty/nonempty second fields do not affect selection.
+Numeric normalization removes leading zero characters textually, never by
+floating-point conversion. UID/GID 0..4294967294 are supported; canonical
+length/lexical bounds prevent collision or overflow. Arbitrarily many initial
+zeros are allowed within the existing line bound. Negative, signed, empty,
+nondecimal, reserved 4294967295 and larger values return ERROR, without guessing
+libc conversion, wraparound or whether an invalid source record was skipped.
+The API preserves duplicate numeric UIDs in input order. Rejecting unsupported
+proof is not an additional NON_COMPLIANT policy.
+
+The six-file exception is restricted to identity_observation library/tests,
+new 7/2/4 module/metadata/tests and this document. All 143 existing library tests
+are preserved byte-for-byte, including the prior 109 and 34 GID additions.
+Historical rows/markers/shadow/GID API signatures, formats, codes and behavior
+are unchanged. In particular, the known silent complete-record short-read
+limitation of historic numeric rows is NOT silently repaired for old callers.
+The new private UID and source modes alone join the existing strict-mode guards.
+
+### Secure reading, stability, confidentiality and public module contract
+
+Reuse canonical absolute regular readable paths, no symlink/path alias,
+root/effective-user ownership, no group/other writable bits, safe permissions,
+and nlink=1 before/opened/after. The common reader brackets descriptor and path
+observations with UID/GID/mode/device/inode/size/mtime/ctime checks. Both sources
+are strict: byte count must exactly match the stable observed size. This catches
+silent truncation after a complete row, including a hidden later NSS declaration;
+two equally truncated observations still fail. Limits: 65536 source lines,
+16384 bytes/line and 4 MiB framed input (4194286 source bytes including the
+required final newline). NUL/control/missing newline/framing/producer stderr,
+I/O or parser errors invalidate all buffered evidence. No raw file content
+is written to disk or captured as a Bash variable. Raw credential fields remain
+transient inside awk only; safe projections are buffered until checks complete.
+Return 0 after both valid observations; otherwise 2, with diagnostics suppressed.
+Stdout is not transactional on output-device failure; callers must check status.
+
+The module performs two complete integrated observations, bracketed by stamps
+of both passwd and NSS configuration. It compares both complete projections
+and before/after stamps, then rechecks kernel applicability. Defensive decoding
+bounds output to 1 MiB, 65536 UID rows, fixed source tokens and canonical decimal
+values in the supported range. Associative keys are prefixed; arithmetic is used
+only after bounded decimal validation, with explicit base 10. Every row is
+validated before any duplicate finding. Diagnostics contain fixed guidance
+and aggregate counts only; no UID/account/source text is logged.
+
+check: fresh 0/1/2/3 (success/finding/error/not applicable). validate repeats
+check with no cache. apply is observation-only: success if already conforming,
+NOT_APPLICABLE if proven so, otherwise ERROR with fixed manual guidance. No
+UID/group/account changes, passwd/shadow/gshadow writes, ownership changes,
+usermod/userdel/getent/pwck execution, CHANGED claim or persistent credential
+backup. rollback is silent idempotent success, including absent source files.
+
+Limits: no atomic transaction across passwd and NSS configuration, no general
+ABA or post-observation race guarantee, no certification of stale NSS caches,
+LD_PRELOAD/runtime-provider substitution, hostile filesystem/kernel, ACL/SELinux
+or scanner item deduplication. Inherited Bash open is not an O_NOFOLLOW or
+O_NONBLOCK transaction; special-object substitution/stalled I/O may block.
+Limits bound bytes/rows, not elapsed I/O. Ordinary read atime can change.
+Real Rocky Linux 10.2 validation must cover versions, native libc parsing,
+OpenSCAP probe/collection/duplicate-name/empty-data behavior, files-only and
+external NSS/SSSD configurations, SELinux/ACL, bootc/classic containers, bounds,
+performance, reboot/post-reboot idempotence and golden image. Remediation and
+ownership restoration remain separate isolated work, never automatic here.
+
+Final local validation and implementation incidents follow after checks.
+Final SHA/tree/parent/compare/CI/jobs/TAP are verified externally after the single
+publication, without a second documentation commit. Stop after CIS 7.2.4.
+
+### Final local verification and incidents before publication
+
+- Final dedicated tests: TAP 1..239, 239 pass, zero failure/skip; library 184
+  (143 unchanged historical +41 new), new CIS 7.2.4 module 55. The first combined
+  library/7.2.1/7.2.2/7.2.3/7.2.4 run had 396 passes; subsequent targeted and
+  complete final runs revalidated the final source and all previous modules.
+- New-test refinements: one ShellCheck Bats assertion style correction, a more
+  precise duplicate-name fixture and a reliable forbidden-command tripwire;
+  the three affected tests passed after refinement. Native libc comment/blank
+  line behavior was then accounted for in the new UID parser and two cases
+  added; no old parser or test body was changed.
+- Initial targeted run: 1644 pass, one historical failure, zero skips. The
+  failing unchanged CIS 7.1.11 timestamp-preservation test failed on an expected
+  observer status, not the final timestamp comparison. Cause was not established;
+  the test passed immediately in isolation and the entire unchanged 65-case
+  suite passed. CIS 7.1.11 does not source the modified identity library. This
+  incident is retained rather than relabeling the initial run as successful.
+- Final targeted regression after the last source change: all 37 files, 1647
+  pass, zero failure/skip, including that historical case, the identity APIs,
+  prior account controls and CIS 7.2.1--7.2.3. Plans 403,369,521,354.
+- Final complete suite: every one of 247 Bats files exactly once in eight
+  disjoint batches. Plans 713,617,656,816,669,751,875,733 total 5830; 5828 pass,
+  zero failures and exactly two inherited local Unix-socket skips. No new skip.
+  Exact-SHA CI must have 5830 passes and zero failures/skips.
+- Bash syntax, genuine Bats preprocessing plus syntax for identity and CIS
+  7.2.1--7.2.4 passed. ShellCheck 0.9.0 passed on the five changed code/test
+  files and all 42 files in the unchanged CI scope. git diff --check passed.
+- Final five code/test SHA256 locks stayed identical through all final runs;
+  the 143 previous identity tests remain a byte-for-byte prefix. Exactly six
+  authorized paths, no seventh file, workflow change or real identity mutation.
+
+These checks validate the implementation within the explicit supported domain;
+no complete external NSS/SSSD compliance or real Rocky/OpenSCAP parity is claimed.

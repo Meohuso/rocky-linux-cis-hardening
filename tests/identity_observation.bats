@@ -560,3 +560,195 @@ gid_error() { run rlch_identity_gid_fields "$1" "$2"; [ "$status" -eq 2 ]; [ -z 
     [ "$before" = "$(stat -c '%d:%i:%a:%u:%g:%s:%y:%z' "$P")" ]
     gid_passwd x 11111 42; [ "$(rlch_identity_gid_fields "$P" passwd)" != "$a" ]
 }
+
+
+# Additive UID/source observations: artificial account/configuration fixtures only.
+uid_row() { printf 'fixture:x:%s:%s::/fixture:/bin/false\n' "$1" "$2" > "$P"; }
+uid_fixture() {
+    U_NSS="$BATS_TEST_TMPDIR/uid-nsswitch.conf"
+    printf 'passwd: files\n' > "$U_NSS"; uid_row 42 7; chmod 0644 "$P" "$U_NSS"
+}
+uid_failure() {
+    run rlch_identity_uid_values "$P" "$U_NSS"
+    [ "$status" -eq 2 ]; [ -z "$output" ]
+}
+@test "idobs UID canonical values retain duplicate zero system and user UIDs" {
+    uid_fixture
+    printf 'a:x:0:0::/:/bin/false\nb:x:42:7::/:/bin/false\nc:x:0042:7::/:/bin/false\nd:x:1000:7::/:/bin/false\n' > "$P"
+    run rlch_identity_uid_values "$P" "$U_NSS"; [ "$status" -eq 0 ]; [ "$output" = $'SOURCE|FILES\nUID|0\nUID|42\nUID|42\nUID|1000' ]
+}
+@test "idobs UID UID field is distinct from primary GID" {
+    uid_fixture; uid_row 51 72
+    run rlch_identity_uid_values "$P" "$U_NSS"; [ "$status" -eq 0 ]; [ "$output" = $'SOURCE|FILES\nUID|51' ]
+}
+@test "idobs UID arbitrary leading zero count canonicalizes without numeric overflow" {
+    uid_fixture
+    zeros="$(printf '%1000s' '' | tr ' ' 0)"; uid_row "${zeros}42" 7
+    run rlch_identity_uid_values "$P" "$U_NSS"; [ "$status" -eq 0 ]; [[ "$output" == *'UID|42' ]]
+}
+@test "idobs UID maximum supported UID remains exact" {
+    uid_fixture; uid_row 4294967294 4294967294
+    run rlch_identity_uid_values "$P" "$U_NSS"; [ "$status" -eq 0 ]; [[ "$output" == *'UID|4294967294' ]]
+}
+@test "idobs UID invalid and unrepresentable UIDs fail closed" {
+    uid_fixture
+    for value in '' BAD -1 +42 1.0 4294967295 4294967296 999999999999999999999; do uid_row "$value" 7; uid_failure; done
+}
+@test "idobs UID invalid primary GID makes libc interpretation uncertain" {
+    uid_fixture; uid_row 42 BAD; uid_failure
+}
+@test "idobs UID empty authentication marker is not an account exclusion" {
+    uid_fixture; printf 'fixture::42:7::/:/bin/false\n' > "$P"
+    run rlch_identity_uid_values "$P" "$U_NSS"; [ "$status" -eq 0 ]; [[ "$output" == *'UID|42' ]]
+}
+@test "idobs UID duplicate account names fail closed independently of UID policy" {
+    uid_fixture; printf 'fixture:x:99:7::/:/bin/false\n' >> "$P"; uid_failure
+}
+@test "idobs UID compat and empty names fail closed" {
+    uid_fixture
+    for value in '+::::::' ':x:42:7::/:/bin/false' '-foo:x:42:7::/:/bin/false'; do printf '%s\n' "$value" > "$P"; uid_failure; done
+}
+@test "idobs UID passwd field framing rejected without partial projection" {
+    uid_fixture
+    for value in 'bad:x:42:7' 'bad:x:42:7::/:/bin/false:extra'; do printf '%s\n' "$value" >> "$P"; uid_failure; uid_row 42 7; done
+}
+@test "idobs UID explicit files source classification ignores unrelated databases" {
+    uid_fixture
+    printf 'hosts: files dns\npasswd:	files # local\ngroup: files sss\n' > "$U_NSS"
+    run rlch_identity_uid_values "$P" "$U_NSS"; [ "$status" -eq 0 ]; [[ "$output" == SOURCE\|FILES* ]]
+}
+@test "idobs UID external and conditional sources are OTHER facts not CIS findings" {
+    uid_fixture
+    for value in 'files sss' 'sss files' ldap compat altfiles 'files [SUCCESS=return]' 'files files'; do
+     printf 'passwd: %s\n' "$value" > "$U_NSS"; run rlch_identity_uid_values "$P" "$U_NSS"
+     [ "$status" -eq 0 ]; [[ "$output" == SOURCE\|OTHER* && "$output" != *"$value"* ]]
+    done
+}
+@test "idobs UID no explicit passwd source is insufficient" {
+    uid_fixture; printf 'group: files\n' > "$U_NSS"; uid_failure
+}
+@test "idobs UID empty and comment-only passwd source invalid" {
+    uid_fixture
+    for value in 'passwd:' 'passwd: # absent'; do printf '%s\n' "$value" > "$U_NSS"; uid_failure; done
+}
+@test "idobs UID duplicate or ambiguous passwd declarations invalid" {
+    uid_fixture
+    for value in 'passwd : files' 'passwd files'; do printf '%s\n' "$value" > "$U_NSS"; uid_failure; done
+    printf 'passwd: files\npasswd: files\n' > "$U_NSS"; uid_failure
+}
+@test "idobs UID both files must be nonempty and present" {
+    uid_fixture; : > "$P"; uid_failure; uid_row 42 7; : > "$U_NSS"; uid_failure
+    rm "$U_NSS"; uid_failure; uid_fixture; rm "$P"; uid_failure
+}
+@test "idobs UID symlinks in either source rejected" {
+    uid_fixture
+    mv "$P" "$P.real"; ln -s "$P.real" "$P"; uid_failure; rm "$P"; mv "$P.real" "$P"
+    mv "$U_NSS" "$U_NSS.real"; ln -s "$U_NSS.real" "$U_NSS"; uid_failure
+}
+@test "idobs UID ancestor symlink rejected" {
+    uid_fixture; mkdir "$BATS_TEST_TMPDIR/real"; mv "$P" "$BATS_TEST_TMPDIR/real/passwd"
+    ln -s real "$BATS_TEST_TMPDIR/alias"; P="$BATS_TEST_TMPDIR/alias/passwd"; uid_failure
+}
+@test "idobs UID hardlinks in either source rejected" {
+    uid_fixture; ln "$P" "$P.alias"; uid_failure; rm "$P.alias"
+    ln "$U_NSS" "$U_NSS.alias"; uid_failure
+}
+@test "idobs UID unsafe permissions rejected in either source" {
+    uid_fixture
+    for file in "$P" "$U_NSS"; do for mode in 0666 0664 0000; do chmod "$mode" "$file"; uid_failure; done; chmod 0644 "$file"; done
+}
+@test "idobs UID special objects rejected without reading bodies" {
+    uid_fixture; rm "$P"; mkfifo "$P"; uid_failure; rm "$P"; mkdir "$P"; uid_failure
+}
+@test "idobs UID producer errors discard complete prefix" {
+    uid_fixture; rlch_identity_stream() { /usr/bin/cat; return 87; }; uid_failure
+}
+@test "idobs UID producer stderr is private and invalidates observation" {
+    uid_fixture; rlch_identity_stream() { /usr/bin/cat; printf 'PRIVATE_SENTINEL\n' >&2; }; uid_failure
+}
+@test "idobs UID complete-row silent passwd truncation detected" {
+    uid_fixture
+    printf 'second:x:42:7::/:/bin/false\n' >> "$P"
+    rlch_identity_stream() { /usr/bin/head -n 1; }; uid_failure
+}
+@test "idobs UID complete-row silent NSS truncation detected even after passwd declaration" {
+    uid_fixture; printf 'group: files sss\n' >> "$U_NSS"
+    rlch_identity_stream() { /usr/bin/head -n 1; }; uid_failure
+}
+@test "idobs UID identical truncated reads cannot become complete evidence" {
+    uid_fixture; printf 'second:x:42:7::/:/bin/false\n' >> "$P"
+    rlch_identity_stream() { /usr/bin/head -n 1; }; uid_failure; uid_failure
+}
+@test "idobs UID mid-record and zero-byte truncation rejected" {
+    uid_fixture; rlch_identity_stream() { /usr/bin/head -c 10; }; uid_failure
+    rlch_identity_stream() { :; }; uid_failure
+}
+@test "idobs UID missing final newline invalid in both sources" {
+    uid_fixture; printf 'fixture:x:42:7::/:/bin/false' > "$P"; uid_failure; uid_row 42 7
+    printf 'passwd: files' > "$U_NSS"; uid_failure
+}
+@test "idobs UID NUL and control bytes invalid in either source" {
+    uid_fixture; printf 'fixture:PRIVATE\000:42:7::/:/bin/false\n' > "$P"; uid_failure; uid_row 42 7
+    printf 'passwd: files\r\n' > "$U_NSS"; uid_failure
+}
+@test "idobs UID whole-record mutation detected" {
+    uid_fixture
+    rlch_identity_stream() { /usr/bin/cat; printf 'later:x:99:7::/:/bin/false\n' >> "$P"; }; uid_failure
+}
+@test "idobs UID hardlink added while reading detected" {
+    uid_fixture
+    rlch_identity_stream() { /usr/bin/cat; ln "$U_NSS" "$U_NSS.alias"; }; uid_failure
+}
+@test "idobs UID line size bound enforced" {
+    uid_fixture; printf 'fixture:%17000s:42:7::/:/bin/false\n' X > "$P"; uid_failure
+}
+@test "idobs UID entry count bound enforced" {
+    uid_fixture
+    awk 'BEGIN{for(i=0;i<65537;i++) print "u"i":x:42:7::/:/bin/false"}' > "$P"; uid_failure
+}
+@test "idobs UID aggregate byte bound enforced" {
+    uid_fixture
+    awk 'BEGIN{for(i=0;i<500;i++){printf "u%d:",i;for(j=0;j<10000;j++)printf "x";print ":42:7::/:/bin/false"}}' > "$P"; uid_failure
+}
+@test "idobs UID maximum supported record count preserves every duplicate" {
+    uid_fixture
+    awk 'BEGIN{for(i=0;i<65536;i++) print "u"i":x:42:7::/:/bin/false"}' > "$P"
+    rlch_identity_uid_values "$P" "$U_NSS" > "$BATS_TEST_TMPDIR/result"; [ "$(wc -l < "$BATS_TEST_TMPDIR/result")" -eq 65537 ]
+}
+@test "idobs UID exact byte limit guards appended or forged terminal data" {
+    uid_fixture
+    rlch_identity_stream() { /usr/bin/cat; printf 'RLCH-IDENTITY-END\n'; }; uid_failure
+}
+@test "idobs UID no secret name hash or member data escapes either output" {
+    uid_fixture
+    printf 'PRIVATE_ACCOUNT:$6$PRIVATE_SALT$PRIVATE_SENTINEL:42:7:PRIVATE_GECOS:/PRIVATE_HOME:/bin/false\n' > "$P"
+    rlch_identity_uid_values "$P" "$U_NSS" > "$BATS_TEST_TMPDIR/out" 2> "$BATS_TEST_TMPDIR/err"
+    [ "$(cat "$BATS_TEST_TMPDIR/out")" = $'SOURCE|FILES\nUID|42' ]; [ ! -s "$BATS_TEST_TMPDIR/err" ]
+    bash -c 'source "$1"; set -x; rc=0; rlch_identity_uid_values "$2" "$3" || rc=$?; set +x; exit "$rc"' bash  "$BATS_TEST_DIRNAME/../lib/identity_observation.sh" "$P" "$U_NSS" > "$BATS_TEST_TMPDIR/trace" 2>&1 || :
+    run /usr/bin/grep -q 'PRIVATE_' "$BATS_TEST_TMPDIR/trace"; [ "$status" -eq 1 ]
+}
+@test "idobs UID wrong argument counts rejected silently" {
+    uid_fixture
+    run rlch_identity_uid_values; [ "$status" -eq 2 ]; [ -z "$output" ]
+    run rlch_identity_uid_values "$P"; [ "$status" -eq 2 ]; [ -z "$output" ]
+    run rlch_identity_uid_values "$P" "$U_NSS" extra; [ "$status" -eq 2 ]; [ -z "$output" ]
+}
+@test "idobs UID deterministic fresh reads preserve content mode and ownership" {
+    uid_fixture
+    before="$(stat -c '%i:%a:%u:%g:%Y:%Z:%s' "$P" "$U_NSS")"
+    a="$(rlch_identity_uid_values "$P" "$U_NSS")"; b="$(rlch_identity_uid_values "$P" "$U_NSS")"; [ "$a" = "$b" ]
+    [ "$before" = "$(stat -c '%i:%a:%u:%g:%Y:%Z:%s' "$P" "$U_NSS")" ]
+    uid_row 43 7; [ "$(rlch_identity_uid_values "$P" "$U_NSS")" != "$a" ]
+}
+@test "idobs UID output failure is ERROR rather than successful observation" {
+    uid_fixture; result=0
+    rlch_identity_uid_values "$P" "$U_NSS" > /dev/full 2> "$BATS_TEST_TMPDIR/err" || result=$?; [ "$result" -eq 2 ]
+}
+
+@test "idobs UID native blank comments and leading spaces do not invent accounts" {
+    uid_fixture
+    printf '\n# ignored:PRIVATE_SENTINEL:42:7::/:/bin/false\n  # ignored too\n  fixture:x:00042:7::/:/bin/false\n' > "$P"
+    run rlch_identity_uid_values "$P" "$U_NSS"
+    [ "$status" -eq 0 ]; [ "$output" = $'SOURCE|FILES\nUID|42' ]
+    printf '# only comments\n\n' > "$P"; uid_failure
+}
