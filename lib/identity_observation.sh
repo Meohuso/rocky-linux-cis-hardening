@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bounded non-secret projections of stable local identity/configuration files.
+# Bounded projections of stable local identity/configuration files.
 # SPDX-License-Identifier: MIT
 # This library does not assert NSS enumeration completeness or select CIS bases.
 # rlch_identity_rows PATH passwd|group|nss => normalized projections on stdout.
@@ -89,6 +89,21 @@ rlch_identity_uid_values() {
     printf '%s\n%s\n' "$sources" "$values" || return 2
 }
 
+# PASSWD_PATH => NAME|LITERAL or SKIP per supported seven-field source row.
+# NAME contains the exact nonempty first field, including case/spaces/pipes;
+# SKIP is an empty first field, not selected by ^([^:]+):.*$. No UID/GID/shell
+# or name-policy filters. Preserve all instances and duplicates in input order.
+# Controlled stdout contains names ONLY; no authentication/other fields. Never
+# log it. A subshell disables xtrace without changing the caller. Strict UTF-8,
+# single-link/exact-byte reads; no projection on read/parse/stability failure.
+# 0 complete observation, 2 error; diagnostics suppressed. Caller must check
+# status (output-device failure is not transactional) and compare snapshots.
+rlch_identity_user_names() (
+    set +x
+    [[ $# -eq 1 ]] || return 2
+    _rlch_identity_rows "$1" user_names 2>/dev/null || return 2
+)
+
 _rlch_identity_observation_stamp() {
     if [[ "$2" == shadow_presence ]]; then
         _rlch_identity_file_stamp "$1" true
@@ -99,7 +114,7 @@ _rlch_identity_observation_stamp() {
 
 _rlch_identity_rows() (
     local file="$1" kind="$2" before opened after fd rows expected=0 links='' strict=0
-    case "$kind" in password_markers|shadow_presence|gid_passwd|gid_group|uid_values|uid_sources) strict=1;; esac
+    case "$kind" in password_markers|shadow_presence|gid_passwd|gid_group|uid_values|uid_sources|user_names) strict=1;; esac
     before="$(_rlch_identity_observation_stamp "$file" "$kind")" || return 2
     if [[ "$strict" -eq 1 ]]; then
         links="$(/usr/bin/stat -c '%h' -- "$file" 2>/dev/null)" || return 2
@@ -124,6 +139,23 @@ _rlch_identity_rows() (
       /usr/bin/head -c 4194305 | LC_ALL=C /usr/bin/awk -v kind="$kind" -v expected="$expected" -v strict="$strict" '
       function invalid() {bad=1;exit 2}
       function uint(s) {return s ~ /^[0-9]+$/ && length(s)<=10 && s+0<=4294967294}
+      # Only the additive name mode validates UTF-8, matching the text probe
+      # encoding domain without normalizing captured code points or bytes.
+      function name_utf8(s,i,b,c,need,j,lo,hi) {
+        for(i=1;i<=length(s);i++) {
+          b=octet[substr(s,i,1)];if(b<128) continue
+          lo=128;hi=191
+          if(b>=194 && b<=223) need=1
+          else if(b>=224 && b<=239) {need=2;if(b==224) lo=160;if(b==237) hi=159}
+          else if(b>=240 && b<=244) {need=3;if(b==240) lo=144;if(b==244) hi=143}
+          else return 0
+          if(i+need>length(s)) return 0
+          c=octet[substr(s,++i,1)];if(c<lo || c>hi) return 0
+          for(j=1;j<need;j++) {c=octet[substr(s,++i,1)];if(c<128 || c>191) return 0}
+        }
+        return 1
+      }
+      BEGIN {if(kind=="user_names") for(i=1;i<256;i++) octet[sprintf("%c",i)]=i}
       function uid_decimal(s) {
         if(s !~ /^[0-9]+$/) return "INVALID"
         sub(/^0+/,"",s);if(s=="") s="0"
@@ -170,6 +202,11 @@ _rlch_identity_rows() (
          next
        }
        count=split($0,f,":")
+       if(kind=="user_names") {
+         if(count!=7 || !name_utf8($0)) invalid()
+         out[++n]=(length(f[1]) ? "NAME|" f[1] : "SKIP")
+         next
+       }
        if(kind=="uid_values") {
          # Native files enumeration skips leading whitespace, blank lines and
          # comments before parsing accounts. Controls remain unsupported above.

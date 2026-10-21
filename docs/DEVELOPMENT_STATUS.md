@@ -3823,3 +3823,174 @@ and complete runs. No library, prior control/test or workflow changed.
 Final commit/tree/run identifiers and exact-SHA CI are verified and reported
 externally to avoid a second documentation commit. No local result is relabeled
 as a real Rocky/OpenSCAP equivalence test. STOP after CIS 7.2.5; no 7.2.6 work.
+
+
+## CIS 7.2.6 - Exact local username capture uniqueness
+
+Baseline: CIS RHEL9 v2.0.0, Level 1 Server, future Rocky Linux 10.2 validation.
+Initial commit 88a866a320e578d1ba4b373c5239af2c9055f35f, tree
+44ff09d48381dee5255e1823648b9431eae4830b; CI 298 / run 39633734809 /
+attempt 1 successful with 5899 Bats passes, zero failure/skip and ShellCheck
+0.9.0. Remote main and clean local HEAD/origin/main matched before editing.
+
+The initial four-file mission stopped before implementation: existing public
+APIs either omit actual names or reject duplicate names as reader errors.
+The user explicitly authorized an additive extension of identity_observation.sh
+and its existing test file, for this control only. Exactly six paths are in
+scope: that library and tests, new 7/2/6 metadata/module, tests/cis_7_2_6.bats and
+this document. No seventh file, other library, old module, workflow, AGENTS.md
+or global setting is changed. The earlier exceptions remain closed.
+
+### Pinned normative method and NSS arbitration
+
+ComplianceAsCode/content pin a4b23038aaf65a25d6e88baa2800c03d09fda577:
+products/rhel9/controls/cis_rhel9.yml maps automated 7.2.6 to account_unique_name
+for l1_server and l1_workstation. Located and verified exact rule directory:
+linux_os/guide/system/accounts/accounts-restrictions/account_expiration/
+account_unique_name/. rule.yml gives RHEL9 CCE-83628-8; RHEL10 CCE-90323-7 is
+context only. XCCDF xccdf_org.ssgproject.content_rule_account_unique_name follows
+the rule stem and the pinned ssg/constants.py OSCAP_RULE/vendor constants.
+
+oval/shared.xml collects textfilecontent54 object object_etc_passwd_content,
+filepath /etc/passwd, pattern ^([^:]+):.*$, instance >= 1. It compares the count
+of all subexpression values with count(unique(subexpression)). Counts are
+integers; the username values remain exact strings. No UID, GID, authentication,
+interactive-user or shell filter exists. Root/system accounts and nonadjacent
+duplicates are included. Names differing in case, leading/trailing/internal
+spaces, numeric spelling or Unicode normalization remain distinct. Empty first
+fields do not match the capture; repeated names are valid observations whose
+uniqueness is decided by the module, not rejected by the new reader.
+
+The OCIL/description uses getent passwd and uniq -d, but it is not substituted
+for the automated object. Independent OpenSCAP 1.4.4 implementation context:
+src/OVAL/probes/independent/textfilecontent54_probe.c opens/reads the selected
+file and emits string subexpressions; src/OVAL/oval_component.c UNIQUE uses a
+string-keyed map. This is not a UNIX password/getpwent probe. No external NSS
+enumeration or files-only NSS prerequisite is justified here. Mixed/external,
+ambiguous, unreadable or missing NSS configuration alone does not alter local
+results. A local duplicate remains a finding; local uncertainty remains ERROR.
+SUCCESS never asserts uniqueness across all NSS/SSSD identities.
+
+Applicability is inherited from account_expiration/group.yml:
+system_with_kernel. The pinned RHEL9 platform implementation checks kernel-core.
+The existing bounded RPM inventory API establishes presence/absence/error and
+is rechecked after observation. No container-environment heuristic is added;
+kernel-bearing bootc is included. Rule source inspection is not a newly built
+datastream or a real Rocky/OpenSCAP comparison. No Ansible is used.
+
+### Additive API and strict supported domain
+
+New public signature: rlch_identity_user_names PASSWD_PATH, exactly one argument.
+Successful controlled stdout has one line per supported source record, in order:
+
+- NAME|LITERAL for a nonempty first field; the exact name follows the first pipe.
+- SKIP for an empty first field, preserving the unselected row observation.
+
+Pipes, spaces, shell metacharacters and numeric-looking names remain literal;
+names are never shell expressions. No trimming, case folding, Unicode
+normalization, sorting, duplicate elimination, UID/GID range test or name-policy
+filter is applied. Authentication, UID/GID, GECOS, home and shell values are not
+published. This API's stdout is identity-bearing internal analysis data and
+must not be logged as a diagnostic. Return 0 means complete supported observation;
+2 means error, with diagnostics suppressed. Output-device failure may leave a
+partial write, so callers must check status; stdout is not transactional.
+
+The new private user_names mode joins the existing strict reader guards. Seven
+colon-separated fields, valid UTF-8, required final newline, no NUL/control bytes
+and the existing source bounds define its supported domain. Empty/nondecimal/
+signed/huge UID/GID fields are not filters: only field structure and encoding
+matter. Plus/minus/comment-like nonempty names are selected when structurally
+supported. Ordinary blank/comment-only lines, wrong field counts, control/tab
+bytes and invalid UTF-8 fail closed as unsupported evidence, not additional CIS
+findings. UTF-8 validation is confined to this new mode; it rejects truncated,
+overlong, surrogate and out-of-range sequences without normalizing valid names.
+
+The reader returns SKIP observations for empty first fields. The module abstains
+with ERROR if no name was selected; empty source files are reader errors. Scanner
+empty-collection/variable flags and parsing outside supported records remain
+part of real-host qualification; vacuous conformity is not certified.
+
+All historical public APIs retain their signatures, formats, return codes and
+behavior. In particular, old duplicate-name rejection and old numeric-row silent
+whole-record-short-read behavior are not repaired. New UTF-8/name handling is
+never applied to old modes. All 184 historical library tests are preserved as
+an exact 42401-byte prefix of the extended test file.
+
+### Completeness, confidentiality and module contract
+
+Inherited strict path/type/readability/ownership/permissions guards, canonical
+absolute paths, no symlink aliases/ancestors, nlink=1, opened-descriptor identity
+and before/after metadata checks remain unchanged. Stable size must exactly
+equal the observed source byte count. Two identical truncated reads cannot
+establish completeness. Producer errors/stderr, mid/whole-record/zero-byte short
+reads, extra data, malformed later rows, missing newline, forged frame or
+observable source changes invalidate buffered projections before publication.
+Bounds remain 65536 source lines, 16384 bytes/line, 4194286 source bytes in the
+4 MiB frame. Raw authentication fields stay transient inside awk, never in
+Bash variables, diagnostics, backups or persistent credential copies.
+
+The module brackets two complete independent name projections with file stamps
+and requires exact equality plus stable metadata. It rechecks applicability
+before deciding. Defensive decoding bounds projection characters/bytes to 4 MiB,
+rows to 65536 and row length to 16400 bytes. All rows are checked before any
+finding. Untrusted names are data on awk stdin, never eval text or Bash array
+subscripts; prefixed string keys preserve equality even for numeric-looking or
+shell-looking names. Only bounded selected/distinct counts return to Bash.
+
+The public name API and the module observation each disable xtrace inside a
+subshell before handling names. Caller tracing/options are preserved; no raw
+name-bearing assignment or pipeline is traced. Test success/finding/error paths
+and noisy producers exercise this explicitly. Module diagnostics use fixed
+guidance and aggregate counts only; names and other passwd fields are withheld.
+
+check and validate are fresh, uncached: 0 SUCCESS for unique selected captures,
+1 NON_COMPLIANT for duplicates, 2 ERROR for unreliable/unsupported observation,
+3 NOT_APPLICABLE only for proven absence of normative applicability. ERROR takes
+priority over an incomplete duplicate prefix. apply is observation-only, 0/3
+when appropriate and ERROR with manual guidance otherwise. rollback is a silent
+idempotent no-op even with missing sources. No CHANGED, account administration,
+identity/permission/ownership/ACL mutation or remediation is introduced.
+
+Residual limits: no atomic snapshot/general ABA/post-observation-race proof;
+read atime can change. Bash open is not an O_NOFOLLOW/O_NONBLOCK transaction;
+special-object substitution or stalled I/O may block. Bounds limit bytes/rows,
+not elapsed time. Hostile filesystem/kernel/runtime substitution, ACL/SELinux,
+scanner collection flags and behavior outside the structural/encoding domain
+are not certified. Real Rocky Linux 10.2 qualification must cover versions,
+OpenSCAP parity (including empty/unsupported data), local and NSS/SSSD setups,
+SELinux/ACL, bounds/performance, reboot/post-reboot idempotence and golden image.
+
+### Verification evidence
+
+39 new library tests and 63 module tests cover exact selection/equality, repeated
+names and nonadjacent duplicates, numeric spellings, spaces/case/Unicode, invalid
+encoding/structure, strict completeness, producer errors, observable mutations,
+bounds, privacy/tracing, inert hostile-looking names, historical compatibility,
+NSS independence, applicability and observation-only lifecycle behavior.
+Initial dedicated run: TAP 1..286, 286 pass, no failure/skip (223 library tests,
+including all 184 historical cases, and 63 module tests). No source/test failure
+was encountered in that run. Reader fault tests use the real strict API; stubs
+are limited to defensive decoding/changed-observation cases, never fabricated
+enumeration completeness.
+
+Final previous-control regression: TAP 1..179, 179 pass, no failure/skip, covering
+all 55 cases of 7.2.3, 55 of 7.2.4 and 69 of 7.2.5. Together with the dedicated
+286-case run, 465 targeted/regression cases passed. Genuine Bats preprocessing
+and Bash syntax passed for both changed test files; Bash syntax passed for the
+library and new metadata/module. Official ShellCheck 0.9.0 passed directly on
+all five code/test paths and all 42 files in the existing CI scope. No workflow
+change was needed. git diff --check passed.
+
+Final complete local suite: all 249 Bats files exactly once in eight disjoint
+batches, plans 1003,621,639,769,664,801,709,795 total 6001 (5899 baseline +102).
+All eight batches exit 0: 5999 passes, zero failures, two inherited local Unix-
+socket skips. These are the unchanged 6.2.1.2 unexpected-socket and 6.2.2.1.2
+direct-socket cases; this environment denies socket creation. No new skips or
+test workaround. Exact-SHA CI must demonstrate 6001 passes, no failure/skip.
+All five code/test SHA256 locks stayed unchanged through final targeted,
+regression and complete runs. The 184 historical library tests remain an exact
+byte prefix; no other test, library, old control or workflow was modified.
+
+Final SHA/tree/CI identifiers are verified and reported externally to avoid a
+second documentation commit. No scanner/runtime equivalence is inferred from
+CI alone. STOP after CIS 7.2.6; no CIS 7.2.7 work.

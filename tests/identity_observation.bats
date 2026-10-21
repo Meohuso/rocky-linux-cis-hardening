@@ -752,3 +752,159 @@ uid_failure() {
     [ "$status" -eq 0 ]; [ "$output" = $'SOURCE|FILES\nUID|42' ]
     printf '# only comments\n\n' > "$P"; uid_failure
 }
+
+
+# Additive strict local username projection; artificial fixtures only.
+name_row() { printf '%s:x:42:7::/fixture:/bin/false\n' "$1" > "$P"; }
+name_failure() { run rlch_identity_user_names "$P"; [ "$status" -eq 2 ]; [ -z "$output" ]; }
+@test "idobs names unique rows preserve exact input order" {
+    printf 'root:x:0:0::/:/bin/false\nsystem:x:1:7::/:/sbin/nologin\nuser:x:1000:7::/:/bin/bash\n' > "$P"
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|root\nNAME|system\nNAME|user' ]
+}
+@test "idobs names nonadjacent duplicates and identical rows are valid evidence" {
+    printf 'same:x:0:0::/:/bin/false\nother:x:1:7::/:/bin/bash\nsame:x:2:8::/:/bin/false\nsame:x:2:8::/:/bin/false\n' > "$P"
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|same\nNAME|other\nNAME|same\nNAME|same' ]
+}
+@test "idobs names case and leading trailing internal spaces remain exact" {
+    printf 'Alice:x:1:7::/:/bin/false\nalice:x:2:7::/:/bin/false\n Alice :x:3:7::/:/bin/false\na  b:x:4:7::/:/bin/false\n' > "$P"
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|Alice\nNAME|alice\nNAME| Alice \nNAME|a  b' ]
+}
+@test "idobs names numeric spellings and marker-like names are unambiguous" {
+    printf '01:x:1:7::/:/bin/false\n1:x:1:7::/:/bin/false\nSKIP:x:1:7::/:/bin/false\nNAME|a:x:1:7::/:/bin/false\n' > "$P"
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|01\nNAME|1\nNAME|SKIP\nNAME|NAME|a' ]
+}
+@test "idobs names Unicode bytes are retained without case or normalization changes" {
+    printf 'élève:x:1:7::/:/bin/false\nÉlève:x:2:7::/:/bin/false\ne\314\201:x:3:7::/:/bin/false\né:x:4:7::/:/bin/false\n' > "$P"
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|élève\nNAME|Élève\nNAME|e\314\201\nNAME|é' ]
+}
+@test "idobs names valid two three and four-byte UTF-8 survives projection" {
+    printf '\302\242\342\202\254\360\237\230\200:x:1:7::/:/bin/false\n' > "$P"
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|\302\242\342\202\254\360\237\230\200' ]
+}
+@test "idobs names invalid UTF-8 including overlong surrogate and out-of-range is ERROR" {
+    for bytes in '\200' '\300\257' '\342\202' '\355\240\200' '\364\220\200\200' '\365\200\200\200'; do
+        printf '%b:x:1:7::/:/bin/false\n' "$bytes" > "$P"; name_failure
+    done
+}
+@test "idobs names UTF-8 validation covers unprojected source fields too" {
+    printf 'user:x:1:7:PRIVATE\377:/:/bin/false\n' > "$P"; name_failure
+}
+@test "idobs names empty first field is SKIP and not a reader failure" {
+    printf ':PRIVATE_AUTH:1:7::/:/bin/false\nuser:x:2:7::/:/bin/false\n' > "$P"
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'SKIP\nNAME|user' ]
+    printf ':x:1:7::/:/bin/false\n' > "$P"; run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = SKIP ]
+}
+@test "idobs names no UID GID authentication or shell selection is imposed" {
+    printf 'a::BAD:-1::/:/sbin/nologin\nb:PRIVATE:999999999999999999:OTHER::/:/bin/false\nc::::::\n' > "$P"
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|a\nNAME|b\nNAME|c' ]
+}
+@test "idobs names plus minus comment-like and whitespace names are text captures" {
+    printf '+:x:1:7::/:/bin/false\n-foo:x:1:7::/:/bin/false\n#name:x:1:7::/:/bin/false\n :x:1:7::/:/bin/false\n' > "$P"
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|+\nNAME|-foo\nNAME|#name\nNAME| ' ]
+}
+@test "idobs names malformed field counts withhold an otherwise valid prefix" {
+    for bad in 'PRIVATE_BROKEN:x:1' 'bad:x:1:7::/:/bin/false:extra'; do name_row good; printf '%s\n' "$bad" >> "$P"; name_failure; done
+}
+@test "idobs names blank and unsupported comment lines fail closed" {
+    printf '\n' >> "$P"; name_failure; printf '# PRIVATE_COMMENT\n' > "$P"; name_failure
+}
+@test "idobs names empty missing directory and FIFO are ERROR" {
+    : > "$P"; name_failure; rm "$P"; name_failure; mkdir "$P"; name_failure; rmdir "$P"; mkfifo "$P"; name_failure
+}
+@test "idobs names unsafe modes and unreadable-bit source rejected" {
+    for mode in 0666 0664 0000; do chmod "$mode" "$P"; name_failure; done
+}
+@test "idobs names symlink and symlink ancestor rejected" {
+    mv "$P" "$P.real"; ln -s "$P.real" "$P"; name_failure; rm "$P"
+    mkdir "$P.dir"; cp "$P.real" "$P.dir/passwd"; ln -s "$P.dir" "$P"; P="$P/passwd"; name_failure
+}
+@test "idobs names hardlinks rejected" { ln "$P" "$P.alias"; name_failure; }
+@test "idobs names relative or noncanonical path rejected" {
+    P="$BATS_TEST_TMPDIR/./passwd"; name_failure; P=relative; name_failure
+}
+@test "idobs names complete-row truncation cannot hide later duplicate" {
+    name_row same; printf 'same:x:9:8::/:/bin/false\n' >> "$P"
+    rlch_identity_stream() { /usr/bin/head -n 1; }; name_failure
+}
+@test "idobs names two identically truncated reads do not prove completeness" {
+    name_row same; printf 'same:x:9:8::/:/bin/false\n' >> "$P"
+    rlch_identity_stream() { /usr/bin/head -n 1; }; name_failure; name_failure
+}
+@test "idobs names mid-record and zero-byte truncation are ERROR" {
+    rlch_identity_stream() { /usr/bin/head -c 5; }; name_failure; rlch_identity_stream() { :; }; name_failure
+}
+@test "idobs names producer failure discards full prefix" {
+    rlch_identity_stream() { /usr/bin/cat; return 87; }; name_failure
+}
+@test "idobs names producer stderr invalidates and remains private" {
+    rlch_identity_stream() { /usr/bin/cat; printf 'PRIVATE_AUTH_SENTINEL\n' >&2; }; name_failure
+}
+@test "idobs names appended rows and forged frame are ERROR" {
+    rlch_identity_stream() { /usr/bin/cat; printf 'extra:x:1:7::/:/bin/false\n'; }; name_failure
+    rlch_identity_stream() { /usr/bin/cat; printf 'RLCH-IDENTITY-END\n'; }; name_failure
+}
+@test "idobs names missing final newline rejected" { printf 'name:x:1:7::/:/bin/false' > "$P"; name_failure; }
+@test "idobs names NUL tabs and control bytes in any field rejected" {
+    printf 'name:PRIVATE\000:1:7::/:/bin/false\n' > "$P"; name_failure
+    printf 'na\tme:x:1:7::/:/bin/false\n' > "$P"; name_failure
+    printf 'name:x:1:7:PRIVATE\r:/:/bin/false\n' > "$P"; name_failure
+}
+@test "idobs names mutation during reading is ERROR" {
+    rlch_identity_stream() { /usr/bin/cat; printf 'later:x:1:7::/:/bin/false\n' >> "$P"; }; name_failure
+}
+@test "idobs names pathname replacement and link creation are ERROR" {
+    rlch_identity_stream() { /usr/bin/cat; cp "$P" "$P.new"; mv "$P.new" "$P"; }; name_failure
+    rlch_identity_stream() { /usr/bin/cat; ln "$P" "$P.alias"; }; name_failure
+}
+@test "idobs names line length bound applies to names and unprojected fields" {
+    printf '%17000s:x:1:7::/:/bin/false\n' X > "$P"; name_failure
+    printf 'name:%17000s:1:7::/:/bin/false\n' X > "$P"; name_failure
+}
+@test "idobs names entry count bound rejects complete oversized inventory" {
+    awk 'BEGIN{for(i=0;i<65537;i++)print "same:x:1:7::/:/bin/false"}' > "$P"; name_failure
+}
+@test "idobs names aggregate bytes include unprojected authentication fields" {
+    awk 'BEGIN{for(i=0;i<500;i++){printf "same:";for(j=0;j<10000;j++)printf "x";print ":1:7::/:/bin/false"}}' > "$P"; name_failure
+}
+@test "idobs names maximum supported count preserves every duplicate instance" {
+    awk 'BEGIN{for(i=0;i<65536;i++)print "same:x:1:7::/:/bin/false"}' > "$P"
+    rlch_identity_user_names "$P" > "$BATS_TEST_TMPDIR/result"; [ "$(wc -l < "$BATS_TEST_TMPDIR/result")" -eq 65536 ]
+    [ "$(sort -u "$BATS_TEST_TMPDIR/result")" = 'NAME|same' ]
+}
+@test "idobs names only controlled name projection leaves parser" {
+    printf 'VISIBLE_NAME:$6$PRIVATE_SALT$PRIVATE_HASH:424242:737373:PRIVATE_GECOS:/PRIVATE_HOME:/PRIVATE_SHELL\n' > "$P"
+    rlch_identity_user_names "$P" > "$BATS_TEST_TMPDIR/out" 2> "$BATS_TEST_TMPDIR/err"
+    [ "$(cat "$BATS_TEST_TMPDIR/out")" = 'NAME|VISIBLE_NAME' ]; [ ! -s "$BATS_TEST_TMPDIR/err" ]
+}
+@test "idobs names xtrace hides names and credentials and preserves caller trace state" {
+    printf 'PRIVATE_NAME:$6$PRIVATE_SALT$PRIVATE_HASH:1:7::/:/bin/false\n' > "$P"
+    run bash -c 'source "$1"; set -x; rlch_identity_user_names "$2" >/dev/null; [[ $- == *x* ]]' bash "$BATS_TEST_DIRNAME/../lib/identity_observation.sh" "$P"
+    [ "$status" -eq 0 ]; [[ "$output" != *PRIVATE* ]]
+}
+@test "idobs names producer error under xtrace cannot reveal raw sentinels" {
+    name_row PRIVATE_NAME
+    run bash -c 'source "$1"; rlch_identity_stream() { /usr/bin/cat; printf PRIVATE_AUTH >&2; }; set -x; rlch_identity_user_names "$2"' bash "$BATS_TEST_DIRNAME/../lib/identity_observation.sh" "$P"
+    [ "$status" -eq 2 ]; [[ "$output" != *PRIVATE* ]]
+}
+@test "idobs names stdout failure returns silent ERROR" {
+    result=0; rlch_identity_user_names "$P" > /dev/full 2> "$BATS_TEST_TMPDIR/err" || result=$?
+    [ "$result" -eq 2 ]; [ ! -s "$BATS_TEST_TMPDIR/err" ]
+}
+@test "idobs names wrong argument counts fail silently" {
+    run rlch_identity_user_names; [ "$status" -eq 2 ]; [ -z "$output" ]
+    run rlch_identity_user_names "$P" extra; [ "$status" -eq 2 ]; [ -z "$output" ]
+}
+@test "idobs names deterministic fresh observations preserve fixture metadata and content" {
+    before="$(stat -c '%i:%a:%u:%g:%Y:%Z:%s' "$P")"; data="$(sha256sum "$P")"
+    a="$(rlch_identity_user_names "$P")"; b="$(rlch_identity_user_names "$P")"; [ "$a" = "$b" ]
+    [ "$before" = "$(stat -c '%i:%a:%u:%g:%Y:%Z:%s' "$P")" ]; [ "$data" = "$(sha256sum "$P")" ]
+    name_row changed; [ "$a" != "$(rlch_identity_user_names "$P")" ]
+}
+@test "idobs names additive mode does not change old public kinds or duplicate rejection" {
+    unknown "$P" user_names
+    name_row same; printf 'same:x:9:8::/:/bin/false\n' >> "$P"
+    run rlch_identity_rows "$P" passwd; [ "$status" -eq 2 ]
+    run rlch_identity_gid_fields "$P" passwd; [ "$status" -eq 0 ]; [ "$output" = $'PRESENT|PRESENT|DECIMAL|7\nPRESENT|PRESENT|DECIMAL|8' ]
+    printf 'passwd: files\n' > "$N"; run rlch_identity_uid_values "$P" "$N"; [ "$status" -eq 2 ]
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|same\nNAME|same' ]
+}
