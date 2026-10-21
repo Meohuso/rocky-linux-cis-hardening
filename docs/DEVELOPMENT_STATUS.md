@@ -3994,3 +3994,159 @@ byte prefix; no other test, library, old control or workflow was modified.
 Final SHA/tree/CI identifiers are verified and reported externally to avoid a
 second documentation commit. No scanner/runtime equivalence is inferred from
 CI alone. STOP after CIS 7.2.6; no CIS 7.2.7 work.
+
+## CIS 7.2.7 — Local greedy group capture uniqueness (development / CI)
+
+### Normative scope and explicit arbitration
+
+CIS RHEL9 v2.0.0, Level 1 Server, future Rocky Linux 10.2 target. CAS pin:
+a4b23038aaf65a25d6e88baa2800c03d09fda577. The pinned
+products/rhel9/controls/cis_rhel9.yml maps control 7.2.7, automated, l1_server
+and l1_workstation, to group_unique_name. CCE RHEL9: CCE-86966-9. Exact XCCDF:
+xccdf_org.ssgproject.content_rule_group_unique_name. The rule.yml declares
+platform system_with_kernel; the pinned applicability OVAL uses kernel-core
+on RHEL. The module observes a fresh bounded RPM inventory and checks that
+applicability remains present after collection. Proven package absence gives
+NOT_APPLICABLE, uncertain inventory gives ERROR; bootc alone is not an exclusion.
+
+Important profile distinction: the pinned cis_server_l1.profile describes CIS
+RHEL9 v2.0.0 and selects cis_rhel9:all:l1_server, but explicitly deselects
+!group_unique_name, with a comment about formerly incompatible prodtype rules.
+Thus the control mapping exists, but default inclusion in that generated CAS
+profile is NOT asserted. The expressly authorized RLCH module implements the
+named pinned rule independently. Real scanner comparison requires explicit
+rule/profile selection and reporting this exclusion; do not silently claim
+that an unmodified default profile exercises this rule.
+
+OVAL source:
+linux_os/guide/system/accounts/accounts-restrictions/group_unique_name/oval/shared.xml.
+It uses textfilecontent54 on /etc/group, pattern ^(.+):.+, instance >= 1,
+count(subexpression) versus count(unique(subexpression)). No numeric conversion,
+GID threshold, system/root exclusion, name policy or external NSS enumeration.
+The human title describes group names; the OCIL uses cut -d : -f 1 /etc/group |
+uniq -d (adjacent comparison of the first field). These are not interchangeable
+with the actual automated greedy captures. Even the OVAL comments mentioning
+/etc/passwd do not override its explicit /etc/group filepath.
+
+The greedy capture ends immediately before the rightmost colon with nonempty
+text on both sides. For alpha:x:42: and alpha:x:43: it is alpha:x in both cases;
+for alpha:x:42:member and alpha:x:43:member the captures differ (alpha:x:42 and
+alpha:x:43). :x:42: captures :x; alpha: does not match. Empty first/second fields,
+non-four-field matching text, comment-like names, plus/minus names and spaces
+are not excluded by a group schema. Supported nonmatching blank/comment/text
+rows are skipped. Repeated instances, including nonadjacent ones, remain in
+the total; exact capture strings, including case, spaces and numeric spellings,
+determine the distinct count. No trimming, sorting, normalization or coercion.
+
+OpenSCAP 1.4.4 source review: textfilecontent54_probe.c collects UTF-8 PCRE
+subexpressions; probe_tfc54behaviors_canonicalize in probe-api.c defaults to
+ignore_case=false, multiline=true, singleline=false. Within RLCH's valid UTF-8,
+LF-delimited control-free text domain, the simple rightmost-colon construction
+reproduces this particular greedy pattern without POSIX submatch ambiguity.
+A supplemental real-system PCRE2 UTF comparison exhaustively checked 21844
+nonempty strings of lengths 1..7 over a, colon, space and e-acute: every capture
+agreed with that construction. The actual strict API read their combined file
+and returned COUNTS|16016|1364, matching the PCRE2 total/distinct captures.
+This is a focused engine/algorithm check, not an actual Rocky/OpenSCAP scan.
+
+### Additive API, completeness and confidentiality
+
+Explicitly approved exception: only lib/identity_observation.sh and
+tests/identity_observation.bats supplement the four normal control files;
+maximum six authorized paths, no workflow or previous-control changes.
+
+Public API: rlch_identity_group_name_counts GROUP_PATH. Exactly one explicit
+canonical path; stdout COUNTS|SELECTED|DISTINCT followed by LF, return 0 for a
+complete stable supported observation, including duplicates or a nonempty
+source with no matches (COUNTS|0|0). Return 2 for any rejected observation or
+output error, with no diagnostics or trusted partial counts. Callers must
+check status; a failing output device is not a transactional output channel.
+Empty files remain unsupported. Library counts describe evidence, not CIS
+result policy. The module conservatively gives ERROR when selected == 0,
+pending real scanner collection/variable flag qualification.
+
+New internal mode group_name_counts reuses the strict framed reader. Captures
+exist only as awk values and prefixed string map keys; no capture, second-field
+authentication value, GID or member list enters shell variables, argv, temporary
+files, stdout or diagnostics. No eval. Both API and module observations execute
+inside private untraced subshells; caller xtrace state is preserved. API stdout
+contains only validated aggregate counts; module output uses fixed guidance
+and bounded aggregate counts. Producer stderr invalidates evidence and remains
+suppressed, including when tracing was enabled by the caller.
+
+Existing strict safeguards remain: regular readable canonical file, no symlink
+or symlink ancestor, permitted ownership/mode, exactly one hardlink, matching
+path/open-descriptor metadata, source byte size known before reading, bounded
+stream and terminal frame, exact source byte equality, no NUL or ASCII control
+bytes, valid UTF-8 in selected AND unselected lines, final LF, 65536 source lines,
+16384 bytes/source line, source size 1..4194286 bytes (4 MiB framed budget minus
+18-byte frame). Every byte, including unselected rows, participates in limits
+and exact counts. Errors, extra data/frames, premature end, mutations or unsafe
+metadata discard all counts before public output. Two identical complete-row
+truncations still fail independently against the source byte size.
+
+There is deliberately no four-field /etc/group validation in this new mode:
+matching malformed text is selected, nonmatching supported text is skipped.
+Security-domain violations (encoding, control bytes, missing LF, frame collision,
+bounds, permissions/links/unstable reads) give ERROR rather than a claim of
+exact scanner behavior outside that domain. Historical public APIs and their
+existing limitations are unchanged; no historical truncation behavior is fixed.
+
+The module brackets two independent strict count observations with source
+metadata stamps, compares both count results, rechecks kernel-core applicability,
+and defensively validates canonical bounded aggregate output. A changed file
+with identical aggregate counts is rejected when the metadata mutation is
+observable. SUCCESS=0 for positive unique captures; NON_COMPLIANT=1 for repeated
+captures on reliable evidence; ERROR=2 for uncertainty, invalidity, incompleteness,
+instability or zero selected captures; NOT_APPLICABLE=3 for proven absence of
+normative applicability. ERROR overrides any untrusted duplicate prefix.
+check and validate are always fresh; apply observes only and returns 0/3 when
+appropriate, otherwise ERROR with manual guidance. No CHANGED or administration.
+rollback is a silent, idempotent no-op, even with missing evidence sources.
+
+Only the selected local /etc/group source is read for identity evidence.
+files/mixed/sss/ldap/compat NSS setups do not add prerequisites or change a
+local finding. No getent, getgrent or SSSD collection, no global NSS assertion.
+
+Residual reader limits remain explicit: no atomic filesystem snapshot, no proof
+against unobservable ABA or post-observation changes, read atime may change,
+no O_NOFOLLOW/O_NONBLOCK transaction around Bash open, no wall-clock timeout.
+Adversarial filesystem/kernel/runtime substitution, stalled I/O, ACL/SELinux
+semantics and scanner behavior outside the supported domain are not certified.
+Real Rocky Linux 10.2 qualification remains: explicit OpenSCAP rule selection
+and differential fixtures (including greedy captures and profile exclusion),
+SELinux/ACL, runtime versions, performance/bounds, reboot/post-reboot idempotence
+and golden image validation. CI does not establish production qualification.
+
+### Verification evidence
+
+Baseline: 6001 exact-SHA CI tests. Added: 41 library tests and 60 module tests,
+101 total. All 223 prior library tests remain an exact byte-identical prefix.
+Dedicated run: TAP 1..324, 324 pass, zero failure/skip. Prior-control regressions:
+TAP 1..242, 242 pass, zero failure/skip across 7.2.3, 7.2.4, 7.2.5 and 7.2.6.
+The fault tests exercise the real strict reader; API stubs are restricted to
+defensive decoder/changed-observation tests, not fabricated completeness.
+Coverage includes exact greediness, nonadjacent duplicates, same names with
+distinct captures, empty/malformed/unselected text, case/spaces/UTF-8, limits,
+whole-row/repeated/mid-row truncations, producer errors, output failures,
+mutations/replacements/links, privacy under tracing, applicability uncertainty,
+NSS independence and observation-only lifecycle/source preservation.
+
+Bash syntax and genuine Bats preprocessing/syntax passed. ShellCheck 0.9.0
+passed directly on all five changed/new code/test paths and all 42 paths in the
+existing workflow scope. The workflow itself does not include module files;
+they were explicitly checked locally. No workflow modification was made.
+
+Complete local suite: all 250 Bats files exactly once in eight disjoint batches,
+TAP plans 766,952,636,776,640,778,727,827, total 6102. All batches exit 0:
+6100 passes, zero failures and two inherited local Unix-socket skips, unchanged
+6.2.1.2 unexpected-socket and 6.2.2.1.2 direct-socket cases. This environment
+denies socket creation; no test workaround or new skip was introduced. Exact-
+SHA GitHub CI must establish 6102 passes, zero failure/skip. SHA256 locks on all
+five code/test files remained unchanged through regression/full verification.
+git diff --check and the exact six-file scope check passed. No other library,
+previous control, historical test, workflow or global framework file changed.
+
+Final commit/tree/parent/compare and exact-SHA CI evidence are reported externally
+to avoid a second documentation commit. This six-file exception closes with
+CIS 7.2.7; STOP after its final CI. No CIS 7.2.8 work is authorized here.

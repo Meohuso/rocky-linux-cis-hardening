@@ -104,6 +104,24 @@ rlch_identity_user_names() (
     _rlch_identity_rows "$1" user_names 2>/dev/null || return 2
 )
 
+# GROUP_PATH => COUNTS|SELECTED|DISTINCT after a complete stable observation.
+# Exact ^(.+):.+ captures stay inside awk, including any authentication fields.
+# No field-count/name/GID policy: nonmatching supported text rows are ignored.
+# Greedy capture ends before the rightmost colon with nonempty text on BOTH
+# sides. On valid UTF-8 LF-delimited control-free text this reproduces the
+# pinned textfilecontent54 pattern, without normalization or numeric coercion.
+# Strict byte/link/descriptor/metadata guards and existing bounds apply. Empty
+# files are unsupported; a nonempty unselected source returns COUNTS|0|0.
+# Return 0 only for complete counts (duplicates valid), 2 otherwise, with no
+# diagnostic/partial counts. Caller checks status, brackets observations and
+# decides empty-collection policy. Output-device failure is not transactional.
+# A private subshell disables xtrace and preserves the caller tracing state.
+rlch_identity_group_name_counts() (
+    set +x
+    [[ $# -eq 1 ]] || return 2
+    _rlch_identity_rows "$1" group_name_counts 2>/dev/null || return 2
+)
+
 _rlch_identity_observation_stamp() {
     if [[ "$2" == shadow_presence ]]; then
         _rlch_identity_file_stamp "$1" true
@@ -114,7 +132,7 @@ _rlch_identity_observation_stamp() {
 
 _rlch_identity_rows() (
     local file="$1" kind="$2" before opened after fd rows expected=0 links='' strict=0
-    case "$kind" in password_markers|shadow_presence|gid_passwd|gid_group|uid_values|uid_sources|user_names) strict=1;; esac
+    case "$kind" in password_markers|shadow_presence|gid_passwd|gid_group|uid_values|uid_sources|user_names|group_name_counts) strict=1;; esac
     before="$(_rlch_identity_observation_stamp "$file" "$kind")" || return 2
     if [[ "$strict" -eq 1 ]]; then
         links="$(/usr/bin/stat -c '%h' -- "$file" 2>/dev/null)" || return 2
@@ -139,7 +157,7 @@ _rlch_identity_rows() (
       /usr/bin/head -c 4194305 | LC_ALL=C /usr/bin/awk -v kind="$kind" -v expected="$expected" -v strict="$strict" '
       function invalid() {bad=1;exit 2}
       function uint(s) {return s ~ /^[0-9]+$/ && length(s)<=10 && s+0<=4294967294}
-      # Only the additive name mode validates UTF-8, matching the text probe
+      # Additive text capture modes validate UTF-8, matching the text probe
       # encoding domain without normalizing captured code points or bytes.
       function name_utf8(s,i,b,c,need,j,lo,hi) {
         for(i=1;i<=length(s);i++) {
@@ -155,7 +173,7 @@ _rlch_identity_rows() (
         }
         return 1
       }
-      BEGIN {if(kind=="user_names") for(i=1;i<256;i++) octet[sprintf("%c",i)]=i}
+      BEGIN {if(kind=="user_names" || kind=="group_name_counts") for(i=1;i<256;i++) octet[sprintf("%c",i)]=i}
       function uid_decimal(s) {
         if(s !~ /^[0-9]+$/) return "INVALID"
         sub(/^0+/,"",s);if(s=="") s="0"
@@ -198,6 +216,19 @@ _rlch_identity_rows() (
            sub(/^[^:]+:[[:space:]]+/,"",line)
            if(line ~ /\|/ || length(line)>2048) invalid()
            out[++n]=key "|" line
+         }
+         next
+       }
+       if(kind=="group_name_counts") {
+         if(!name_utf8($0)) invalid()
+         n++
+         # No POSIX submatch ambiguity: rightmost eligible literal colon.
+         # Byte offsets are safe here: ASCII colon cannot occur in a UTF-8
+         # continuation sequence. Exclude the first and final byte positions.
+         for(p=length($0)-1;p>=2;p--) if(substr($0,p,1)==":") {
+           capture=substr($0,1,p-1);selected++
+           if(!captures["capture:" capture]++) distinct++
+           break
          }
          next
        }
@@ -244,7 +275,8 @@ _rlch_identity_rows() (
        else out[++n]=sprintf("%.0f",f[3]+0)
       }
       END {if(bad || !ended || !n || (strict && bytes-18!=expected) || (kind=="nss" && (!seen["passwd"] || !seen["group"]))) exit 2
-           for(i=1;i<=n;i++) print out[i]}'
+           if(kind=="group_name_counts") printf "COUNTS|%d|%d\n",selected,distinct
+           else for(i=1;i<=n;i++) print out[i]}'
     )" || return 2
     exec {fd}<&-
     after="$(_rlch_identity_observation_stamp "$file" "$kind")" || return 2

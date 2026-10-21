@@ -908,3 +908,167 @@ name_failure() { run rlch_identity_user_names "$P"; [ "$status" -eq 2 ]; [ -z "$
     printf 'passwd: files\n' > "$N"; run rlch_identity_uid_values "$P" "$N"; [ "$status" -eq 2 ]
     run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|same\nNAME|same' ]
 }
+
+# Additive count-only projection of exact pinned greedy group captures.
+group_counts() {
+    run rlch_identity_group_name_counts "$G"
+    [ "$status" -eq 0 ]; [ "$output" = "COUNTS|$1|$2" ]
+}
+group_count_error() {
+    run rlch_identity_group_name_counts "$G"
+    [ "$status" -eq 2 ]; [ -z "$output" ]
+}
+@test "idobs group counts unique root system and user captures" {
+    printf 'root:x:0:\ndaemon:x:1:\nuser:x:1000:\n' > "$G"; group_counts 3 3
+}
+@test "idobs group counts same capture despite different numeric GIDs" {
+    printf 'alpha:x:42:\nalpha:x:43:\n' > "$G"; group_counts 2 1
+}
+@test "idobs group counts same first name can have distinct greedy captures" {
+    printf 'alpha:x:42:member\nalpha:x:43:member\n' > "$G"; group_counts 2 2
+}
+@test "idobs group counts members excluded but GIDs included when last field nonempty" {
+    printf 'alpha:x:42:one\nalpha:x:42:two\n' > "$G"; group_counts 2 1
+}
+@test "idobs group counts greedy matching across multiple colons is exact" {
+    printf 'a:b:c:d\na:b:c:z\na:b:z\n' > "$G"; group_counts 3 2
+}
+@test "idobs group counts repeated nonadjacent captures preserve every occurrence" {
+    printf 'alpha:x:42:\nbeta:x:0:\nalpha:x:43:\nbeta:x:1000:\nalpha:x:44:\n' > "$G"; group_counts 5 2
+}
+@test "idobs group counts empty first and second fields follow regex rather than schema" {
+    printf ':x:42:\n:x:43:\nalpha::42:\nalpha::43:\n::x\n::y\n' > "$G"; group_counts 6 3
+}
+@test "idobs group counts blank comment and malformed nonmatches are skipped" {
+    printf '\n# PRIVATE\nalpha:\n:x\nno-colon\n' > "$G"; group_counts 0 0
+}
+@test "idobs group counts no four-field validation imposed on matching text" {
+    printf 'alpha:x\nalpha:y\nnot:a:group:entry:at:all\n' > "$G"; group_counts 3 2
+}
+@test "idobs group counts all source bytes count including nonmatching lines" {
+    printf 'alpha:x\nPRIVATE_NONMATCH\nalpha:y\n' > "$G"; group_counts 2 1
+    rlch_identity_stream() { /usr/bin/head -n 1; }; group_count_error
+}
+@test "idobs group counts case leading trailing and internal spaces remain distinct" {
+    printf 'Alpha:x\nalpha:x\n alpha:x\nalpha :x\na  b:x\n' > "$G"; group_counts 5 5
+    printf 'alpha :z\n' >> "$G"; group_counts 6 5
+}
+@test "idobs group counts numeric spellings never normalized" {
+    printf '01:x\n1:x\nalpha:x:0042:m\nalpha:x:42:m\n' > "$G"; group_counts 4 4
+}
+@test "idobs group counts UTF-8 exact without normalization" {
+    printf 'élève:x\nÉlève:x\ne\314\201:x\né:x\n' > "$G"; group_counts 4 4
+    printf 'élève:y\n' >> "$G"; group_counts 5 4
+}
+@test "idobs group counts valid UTF-8 leading and trailing multibyte captures" {
+    printf '\302\242:\342\202\254\n\302\242:\360\237\230\200\n' > "$G"; group_counts 2 1
+}
+@test "idobs group counts metacharacters and pipes remain inert string data" {
+    printf '%s:x\n%s:y\n' '$(touch PRIVATE_FLAG)|[1]' '$(touch PRIVATE_FLAG)|[1]' > "$G"; group_counts 2 1
+    [ ! -e PRIVATE_FLAG ]
+}
+@test "idobs group counts long captures retained without truncating equality" {
+    long="$(printf '%16000s' '' | tr ' ' a)"; printf '%s:x\n%s:y\na:x\n' "$long" "$long" > "$G"; group_counts 3 2
+}
+@test "idobs group counts empty missing directory and FIFO fail closed" {
+    : > "$G"; group_count_error; rm "$G"; group_count_error; mkdir "$G"; group_count_error; rmdir "$G"; mkfifo "$G"; group_count_error
+}
+@test "idobs group counts unreadable and unsafe modes rejected" {
+    for mode in 0000 0666 0664; do chmod "$mode" "$G"; group_count_error; done
+}
+@test "idobs group counts noncanonical relative and symlink paths rejected" {
+    saved="$G"; G="$BATS_TEST_TMPDIR/./group"; group_count_error; G=relative; group_count_error; G="$saved"
+    mv "$G" "$G.real"; ln -s "$G.real" "$G"; group_count_error; rm "$G"
+    mkdir "$G.dir"; cp "$G.real" "$G.dir/group"; ln -s "$G.dir" "$G"; G="$G/group"; group_count_error
+}
+@test "idobs group counts hardlinks rejected" { ln "$G" "$G.alias"; group_count_error; }
+@test "idobs group counts complete-row truncation never publishes prefix" {
+    printf 'same:x\nsame:y\n' > "$G"; rlch_identity_stream() { /usr/bin/head -n 1; }; group_count_error
+}
+@test "idobs group counts identical repeated truncations cannot prove completeness" {
+    printf 'same:x\nsame:y\n' > "$G"; rlch_identity_stream() { /usr/bin/head -n 1; }; group_count_error; group_count_error
+}
+@test "idobs group counts mid-record and zero-byte truncation rejected" {
+    rlch_identity_stream() { /usr/bin/head -c 5; }; group_count_error; rlch_identity_stream() { :; }; group_count_error
+}
+@test "idobs group counts producer nonzero and stderr reject complete-looking prefix" {
+    rlch_identity_stream() { /usr/bin/cat; return 87; }; group_count_error
+    rlch_identity_stream() { /usr/bin/cat; printf PRIVATE_AUTH >&2; }; group_count_error
+}
+@test "idobs group counts appended rows and forged frames rejected" {
+    rlch_identity_stream() { /usr/bin/cat; printf 'extra:x\n'; }; group_count_error
+    rlch_identity_stream() { /usr/bin/cat; printf 'RLCH-IDENTITY-END\n'; }; group_count_error
+}
+@test "idobs group counts missing newline invalidates otherwise complete records" {
+    printf 'same:x\nsame:y' > "$G"; group_count_error
+}
+@test "idobs group counts NUL tabs CR and controls rejected even in nonmatches" {
+    for bytes in '\000' '\t' '\r' '\001'; do printf 'same:x\nsame:y\nPRIVATE%b\n' "$bytes" > "$G"; group_count_error; done
+}
+@test "idobs group counts invalid UTF-8 in selected and unselected rows rejected" {
+    for bytes in '\200' '\300\257' '\342\202' '\355\240\200' '\364\220\200\200'; do
+        printf 'PRIVATE%b:x\n' "$bytes" > "$G"; group_count_error
+        printf 'same:x\nPRIVATE%b\n' "$bytes" > "$G"; group_count_error
+    done
+}
+@test "idobs group counts content mutation during reading rejected" {
+    rlch_identity_stream() { /usr/bin/cat; printf 'later:x\n' >> "$G"; }; group_count_error
+}
+@test "idobs group counts pathname replacement and new links rejected" {
+    rlch_identity_stream() { /usr/bin/cat; cp "$G" "$G.new"; mv "$G.new" "$G"; }; group_count_error
+    rlch_identity_stream() { /usr/bin/cat; ln "$G" "$G.alias"; }; group_count_error
+}
+@test "idobs group counts metadata mutation despite unchanged bytes rejected" {
+    rlch_identity_stream() { /usr/bin/cat; chmod 0600 "$G"; }; group_count_error
+}
+@test "idobs group counts source line length bound enforced" {
+    printf '%17000s:x\n' X > "$G"; group_count_error
+}
+@test "idobs group counts line bound includes unselected rows" {
+    awk 'BEGIN{for(i=0;i<65537;i++)print "PRIVATE_NONMATCH"}' > "$G"; group_count_error
+}
+@test "idobs group counts aggregate byte bound enforced" {
+    awk 'BEGIN{for(i=0;i<500;i++){for(j=0;j<10000;j++)printf "x";print ":y"}}' > "$G"; group_count_error
+}
+@test "idobs group counts maximum record count retains every duplicate" {
+    awk 'BEGIN{for(i=0;i<65536;i++)print "same:x"}' > "$G"; group_counts 65536 1
+}
+@test "idobs group counts projection contains counts only even with hashes members and names" {
+    printf 'PRIVATE_NAME:$6$PRIVATE_SALT$PRIVATE_HASH:424242:PRIVATE_MEMBER\nPRIVATE_NAME:$6$PRIVATE_SALT$PRIVATE_HASH:424242:OTHER_MEMBER\n' > "$G"
+    rlch_identity_group_name_counts "$G" > "$BATS_TEST_TMPDIR/out" 2> "$BATS_TEST_TMPDIR/err"
+    [ "$(cat "$BATS_TEST_TMPDIR/out")" = 'COUNTS|2|1' ]; [ ! -s "$BATS_TEST_TMPDIR/err" ]
+}
+@test "idobs group counts xtrace private for unique duplicate and invalid observations" {
+    for mode in unique duplicate error; do
+        printf 'PRIVATE_NAME:PRIVATE_AUTH:1:PRIVATE_MEMBER\n' > "$G"; expected=0
+        if [[ "$mode" == duplicate ]]; then cat "$G" > "$G.copy"; cat "$G.copy" >> "$G"; fi
+        if [[ "$mode" == error ]]; then printf 'PRIVATE\377\n' >> "$G"; expected=2; fi
+        run bash -c 'source "$1"; set -x; rc=0; rlch_identity_group_name_counts "$2" || rc=$?; [[ $- == *x* ]] || exit 99; exit "$rc"' bash "$BATS_TEST_DIRNAME/../lib/identity_observation.sh" "$G"
+        [ "$status" -eq "$expected" ]; [[ "$output" != *PRIVATE* ]]
+    done
+}
+@test "idobs group counts noisy producer stays private under tracing" {
+    run bash -c 'source "$1"; rlch_identity_stream(){ /usr/bin/cat; printf PRIVATE_AUTH >&2; }; set -x; rlch_identity_group_name_counts "$2"' bash "$BATS_TEST_DIRNAME/../lib/identity_observation.sh" "$G"
+    [ "$status" -eq 2 ]; [[ "$output" != *PRIVATE* ]]
+}
+@test "idobs group counts failed output and wrong arity return silent error" {
+    result=0; rlch_identity_group_name_counts "$G" > /dev/full 2> "$BATS_TEST_TMPDIR/err" || result=$?
+    [ "$result" -eq 2 ]; [ ! -s "$BATS_TEST_TMPDIR/err" ]
+    run rlch_identity_group_name_counts; [ "$status" -eq 2 ]; [ -z "$output" ]
+    run rlch_identity_group_name_counts "$G" extra; [ "$status" -eq 2 ]; [ -z "$output" ]
+}
+@test "idobs group counts deterministic fresh and observation-only" {
+    before="$(stat -c '%i:%a:%u:%g:%Y:%Z:%s' "$G")"; data="$(sha256sum "$G")"
+    a="$(rlch_identity_group_name_counts "$G")"; b="$(rlch_identity_group_name_counts "$G")"; [ "$a" = "$b" ]
+    [ "$before" = "$(stat -c '%i:%a:%u:%g:%Y:%Z:%s' "$G")" ]; [ "$data" = "$(sha256sum "$G")" ]
+    printf 'other:x\n' >> "$G"; [ "$a" != "$(rlch_identity_group_name_counts "$G")" ]
+}
+@test "idobs group counts additive API leaves all four historical contracts intact" {
+    unknown "$G" group_name_counts
+    printf 'root:x:0:\nroot:x:42:\n' > "$G"
+    run rlch_identity_rows "$G" group; [ "$status" -eq 2 ]
+    run rlch_identity_gid_fields "$G" group; [ "$status" -eq 0 ]; [ "$output" = $'PRESENT|PRESENT|NA|0\nPRESENT|PRESENT|NA|42' ]
+    run rlch_identity_uid_values "$P" "$N"; [ "$status" -eq 0 ]; [ "$output" = $'SOURCE|FILES\nUID|0\nUID|1001' ]
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|root\nNAME|user' ]
+    group_counts 2 1
+}
