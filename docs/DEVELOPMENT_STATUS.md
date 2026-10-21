@@ -3665,3 +3665,161 @@ publication, without a second documentation commit. Stop after CIS 7.2.4.
 
 These checks validate the implementation within the explicit supported domain;
 no complete external NSS/SSSD compliance or real Rocky/OpenSCAP parity is claimed.
+
+
+## CIS 7.2.5 - Exact local group GID capture uniqueness
+
+Baseline: CIS RHEL9 v2.0.0, Level 1 Server, future Rocky Linux 10.2 target.
+Initial commit 414ef0acfdd2f364bdf6bb8627328250fdf0e152, tree
+89941f3a9b2e7c4ec03e9d7bd526d781f1d3f888; CI 297 / run 39220628629 /
+attempt 1 completed successfully with 5830 Bats passes and no failure/skip.
+Remote main and the clean local main/HEAD/origin/main were verified before
+implementation. Exactly four paths are authorized: new 7/2/5 metadata/module,
+tests/cis_7_2_5.bats and this document. No library, historical test, prior module,
+workflow or global script changes. The 7.2.4 six-file exception is closed.
+
+### Pinned normative mapping and independent source review
+
+ComplianceAsCode/content pin a4b23038aaf65a25d6e88baa2800c03d09fda577:
+products/rhel9/controls/cis_rhel9.yml maps 7.2.5, automated, l1_server and
+l1_workstation, to group_unique_id. Rule YAML gives RHEL9 CCE-86043-7;
+RHEL10 CCE-86908-1 is context only. XCCDF
+xccdf_org.ssgproject.content_rule_group_unique_id follows the rule stem and
+ssg/constants.py OSCAP_VENDOR/OSCAP_RULE generation constants, also consumed
+by ssg/build_renumber.py. This review reads sources, not a newly built RHEL9
+datastream or a real Rocky scanner result.
+
+The rule's oval/shared.xml uses ind:textfilecontent54_object obj_all_group_ids,
+filepath /etc/group, pattern ^.+:.+:(\d+):.*$, and instance >= 1. The total
+subexpression count is compared with count(unique(subexpression)); integer
+datatypes belong to the counts, not a numeric conversion of each GID capture.
+No GID_MIN, interactive-user, system-group or GID-zero exclusion exists.
+Misleading comments mentioning names or /etc/passwd do not change the object.
+The OCIL cut/uniq command is not substituted for this automated selection:
+nonadjacent duplicates must also be detected.
+
+OpenSCAP 1.4.4 source context was inspected separately:
+src/OVAL/probes/independent/textfilecontent54_probe.c reads the selected local
+file and emits subexpression strings; it does not call getgrent/getpwent.
+src/OVAL/oval_component.c UNIQUE builds a string-keyed value map. Thus 42 and
+0042, and 0 and 00, are distinct captures. Decimal strings beyond uid_t/gid_t
+or machine-integer ranges remain strings, within reader size limits. No GID
+arithmetic, range cutoff, decimal normalization or floating-point conversion
+is introduced. Identical instances and repeated group names are preserved:
+name uniqueness is not an additional condition of this textfile object.
+
+Applicability system_with_kernel was checked in shared/applicability YAML and
+OVAL. For RHEL9, kernel-core presence selects the control, including kernel-
+bearing bootc images/systems; a proved absence is NOT_APPLICABLE. The existing
+RPM API compares nonempty normalized inventories, rejects malformed/noisy/
+failed observations, and is rechecked after the group observations. Container
+environment heuristics are not used. No Ansible or account remediation runs.
+
+### Approved local scope and existing API contract
+
+The user explicitly approved option 1 after pre-implementation review: retain
+the pinned local-file scope and exactly four files; no NSS library extension.
+Mixed/external NSS configuration alone is neither a finding nor ERROR. The
+module does not read nsswitch.conf, resolve groups through getent/getgrent or
+copy 7.2.4's files-only passwd precondition. SUCCESS asserts only uniqueness
+of the supported selected local captures, never global NSS group uniqueness.
+Local duplicates remain findings regardless of configured external sources;
+unreliable local evidence remains ERROR regardless of NSS.
+
+Unchanged public API: rlch_identity_gid_fields GROUP_PATH group. It returns
+NAME_PRESENT|FIELD2_PRESENT|NA|GID_LITERAL, one row per source record, retaining
+order, all decimal digits and duplicates. NONE represents a nondecimal/empty
+GID. Within its supported four-field, control-free records, the OVAL pattern
+selects PRESENT/PRESENT and a decimal literal; empty first/second fields and
+nondecimal, signed or padded third fields are not selected. Such nonmatches
+are not automatically malformed-reader errors. Structural field-count errors,
+controls, missing newline and unsupported source framing are reader errors.
+
+The existing projection deliberately permits repeated names, compat-like names
+and arbitrary nonempty authentication fields; the pinned pattern does too in
+the supported structural domain. No group-name policy or UID/GID numeric
+range is inferred. An empty capture domain returns ERROR conservatively:
+real scanner empty-collection/variable flags are not certified as vacuous
+conformity. Empty source files are also insufficient evidence. This abstention
+and rejection of unsupported records are explicit limits, not new findings.
+
+### Completeness, privacy and module behavior
+
+Both reads use the strict single-link/exact-byte group mode, not the historical
+rlch_identity_rows group mode. Canonical absolute regular readable paths,
+ownership/permission checks, path/open-descriptor identity, observed size,
+device/inode/UID/GID/mode/mtime/ctime stability and nlink=1 checks are inherited
+unchanged. Accepted source byte count must equal observed size. Silent truncation
+after a complete line, two identical truncated reads, zero/mid-record reads,
+appended producer data, missing newline, forged framing, producer failure or
+stderr cannot establish successful evidence. Projections are withheld until
+all source checks succeed. Limits remain 65536 source lines, 16384 bytes/line
+and 4194286 source bytes inside the reader's 4 MiB frame.
+
+The module brackets two complete group projections with path stamps and compares
+both projections and stamps, then checks applicability again. Defensive decoding
+rejects malformed tokens and bounds rows to 65536, each row to 16480 characters
+and projection to 6 MiB. All rows are checked before reporting any duplication.
+Associative keys are prefixed and compared textually; arithmetic is confined to
+bounded entry counters. Library return failures, unstable observations, malformed
+projections and unexpected statuses normalize to ERROR with fixed diagnostics.
+
+check/validate perform fresh independent observations: SUCCESS (0), finding (1),
+ERROR (2) or proven NOT_APPLICABLE (3). apply is observation-only, returning 0/3
+when appropriate and ERROR with manual guidance for a finding or uncertainty.
+rollback is a silent idempotent no-op even with missing sources. No CHANGED,
+group/user administration, ownership/permission/ACL mutation, identity-file
+backup or persistent credential copy occurs. Only aggregate counts appear in
+findings; names, GID literals, authentication fields and members are withheld.
+No raw identity data is stored in Bash variables or written to persistent files.
+
+Residual limits: no atomic snapshot or general ABA/post-observation race proof;
+ordinary read atime can change. The inherited Bash open is not an O_NOFOLLOW/
+O_NONBLOCK transaction, so special-object substitution or stalled I/O can block.
+Bounds limit bytes/rows, not elapsed time. Hostile kernels/filesystems/runtime
+substitution, ACL/SELinux behavior, PCRE/native parsing outside supported records,
+scanner collection/empty-data flags and actual Rocky/OpenSCAP parity remain
+unqualified. Real Rocky Linux 10.2 validation must cover installed versions,
+local and NSS/SSSD setups, bounds/performance, SELinux/ACL, classic containers
+and bootc, reboot/post-reboot idempotence and golden-image validation. No global
+OpenSCAP equivalence or production-ready certification is claimed.
+
+### Validation evidence
+
+69 new Bats cases cover exact textual selection and duplicate counts, nonadjacent
+duplicates, zero/system groups, leading zeros, huge decimal captures, repeated
+names/records, nonmatches, malformed files/projections, truncations, reader
+failures/stderr, observable mutations, bounds, NSS independence, applicability,
+fresh calls, observation-only apply, no-op rollback, privacy and absence of
+fixture mutation or administration calls. Reader fault cases exercise the real
+existing strict API; observer stubs are restricted to defensive/error decoding
+and changes between observations, never external enumeration completeness.
+
+Initial dedicated run: 68 pass and one new-test failure, no skip. The failing
+xtrace confidentiality test incorrectly expected SUCCESS: inherited xtrace is
+producer stderr and the unchanged strict reader correctly returns ERROR. The
+test now requires ERROR and no raw credential/name/member disclosure. The
+module was not relaxed. Local tool setup required official Bats 1.11.0 source
+and official ShellCheck 0.9.0 binary outside the repository because system apt
+installation was unavailable. No test/framework workaround was committed.
+
+Final targeted regression: TAP 1..363, 363 pass, zero failure/skip, comprising
+the 69 new cases, 55 unchanged 7.2.3 cases, 55 unchanged 7.2.4 cases and all
+184 unchanged identity library cases. Genuine Bats preprocessing and Bash
+syntax passed for the new test; Bash syntax passed for metadata/module.
+Official ShellCheck 0.9.0 passed directly on all three new code/test files
+and on all 42 files in the unchanged existing CI scope. git diff --check passed.
+
+Final complete local suite: all 248 Bats files exactly once in eight disjoint
+batches; plans 710,624,632,793,687,783,677,993 total 5899 (5830 baseline +69).
+All eight batches exit 0: 5897 passes, zero failures and two inherited Unix-
+socket skips because this environment denies socket creation. The two cases
+are the unchanged 6.2.1.2 unexpected-socket and 6.2.2.1.2 direct-socket checks;
+no new test skips. Exact-SHA CI must still demonstrate 5899 passes with zero
+failures/skips. No test was changed to evade local environment restrictions.
+The three new code/test SHA256 values remained unchanged during final targeted
+and complete runs. No library, prior control/test or workflow changed.
+
+Final commit/tree/run identifiers and exact-SHA CI are verified and reported
+externally to avoid a second documentation commit. No local result is relabeled
+as a real Rocky/OpenSCAP equivalence test. STOP after CIS 7.2.5; no 7.2.6 work.
