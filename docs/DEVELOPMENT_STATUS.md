@@ -4150,3 +4150,268 @@ previous control, historical test, workflow or global framework file changed.
 Final commit/tree/parent/compare and exact-SHA CI evidence are reported externally
 to avoid a second documentation commit. This six-file exception closes with
 CIS 7.2.7; STOP after its final CI. No CIS 7.2.8 work is authorized here.
+
+## CIS 7.2.8 — Local interactive home directories (development / CI)
+
+### Approved scope and normative matrix
+
+CIS RHEL9 v2.0.0, Level 1 Server; future Rocky Linux 10.2 qualification target.
+ComplianceAsCode pin: a4b23038aaf65a25d6e88baa2800c03d09fda577.
+Initial commit: ffb10780b6e2a26518254017b1635a941e07e248; initial tree:
+c19d9347f4c4e1355f8c6d1773337bd137fd07bc. Baseline CI 300/run 39646796655,
+attempt 1: 6102 passes, zero failure/skip, ShellCheck 0.9.0 SUCCESS.
+
+Explicit user arbitration covers ALL THREE main rules, literal pinned aggregate
+ownership semantics, and a bounded proved-equivalent regex domain with ERROR
+outside it. Exactly two library/test paths supplement the four control paths;
+six files maximum for this control only. No new runtime dependency or workflow,
+old control, historical API contract or global framework change.
+
+| Dimension | Existence | Ownership | Permissions |
+|---|---|---|---|
+| CAS rule | accounts_user_interactive_home_directory_exists | file_ownership_home_directories | file_permissions_home_directories |
+| RHEL9 CCE | CCE-83639-5 | CCE-87917-1 | CCE-83634-6 |
+| CIS 7.2.8 mapping | main, l1_server/l1_workstation | main, l1_server/l1_workstation | main, l1_server/l1_workstation |
+| Effective CAS L1 profile | selected | explicitly excluded | selected |
+| Specific applicability | system_with_kernel (RHEL: kernel-core) | no kernel precondition declared | no kernel precondition declared |
+| Identity source | local /etc/passwd text | same, separate home/UID captures | same home captures |
+| Predicate | captured home count versus collected file paths; empty-count object alternative | exactly one matching expected UID value per owner, plus unique collected owners | directory type; forbidden bits 07027 absent |
+| Runtime tailoring | no external value in this OVAL | no external value in this OVAL | fixed state bits, not exact mode 0750 |
+
+Exact XCCDF IDs:
+- xccdf_org.ssgproject.content_rule_accounts_user_interactive_home_directory_exists
+- xccdf_org.ssgproject.content_rule_file_ownership_home_directories
+- xccdf_org.ssgproject.content_rule_file_permissions_home_directories
+
+Pinned sources: products/rhel9/controls/cis_rhel9.yml,
+products/rhel9/profiles/cis_server_l1.profile, and each rule.yml/oval/shared.xml
+under linux_os/guide/system/accounts/accounts-session/<RULE>/; shared macros:
+shared/macros/10-oval.jinja. The profile selects cis_rhel9:all:l1_server but
+explicitly removes !file_ownership_home_directories. RLCH intentionally covers
+the three-rule CIS mapping; it does NOT claim default generated-profile parity.
+file_groupownership_home_directories (CCE-83629-6) is related_rules only and is
+NOT implemented here. That related rule uses a password_object with potential
+NSS enumeration, unlike the three approved local text collectors.
+
+The metadata scalar cannot faithfully encode three primary IDs. Following
+AGENTS.md, RLCH_MODULE_OPENSCAP_RULE=manual denotes this aggregate mapping; it
+does not change the automated check implementation. The exact IDs remain
+individually documented and diagnostics retain existence/ownership/permissions.
+
+OCIL differences remain visible: existence uses pwck -r; ownership uses an awk
+UID>=uid_min and shell example with ls -ld; permissions suggests listing /home.
+These human procedures are not substituted for the actual automated selectors,
+aggregate owner tests, or selected home paths. No correction command is run.
+
+### Formal supported regex and observation domain
+
+Let N be the language [A-Za-z0-9_.-]{1,128}, interpreted as ASCII bytes. Every
+source record must have exactly seven colon-delimited fields, nonempty name in
+N, printable ASCII text with no pipe byte, UID text [0-9]{1,32} whose numeric
+value is in 0..4294967294, home length <=4096 bytes. The other fields may be
+empty and are NOT used to infer GID/password/shell validity. All source rows,
+including initially unselected ones, must satisfy this representation contract.
+Unsupported encoding/structure, empty files, unsafe evidence or resource excess
+returns ERROR for the entire check. No problematic account is silently ignored.
+
+Dynamic names are NOT escaped: dot retains its PCRE meaning of one character.
+The other alphabet characters are PCRE literals outside a class. For p,s in N,
+^p$ matches s iff their lengths agree and every position is either a dot in p
+or the same ASCII byte. The implementation performs precisely this bounded
+fixed-width comparison, never compilation of an untrusted expression.
+
+The complete first-stage CAS selector has fixed field separators, a four-or-
+more-digit UID spelling, the four nologin/false PREFIX exclusions, and exact
+nobody/nfsnobody exclusion. It does not use /etc/shells or numeric UID>=1000.
+Thus 0001 and 0999 are selected; unknown and empty shells can be selected; root
+is not specially excluded if its UID spelling has four digits. The initial
+lookahead groups do not participate in successful matches, leaving only the
+name subexpression. In supported seven-field LF records, negated-colon field
+patterns cannot shift a separator; the fixed six colons anchor the columns.
+
+The second-stage home pattern is ^(?:NAME):(?:[^:]*:){4}([^:]+):[^:]*$;
+the UID pattern is ^(?:NAME:)(?:[^:]*:)([^:]+):(?:[^:]*:){3}[^:]*$.
+Within N no dynamic name can introduce a group: each second-stage pattern has
+EXACTLY ONE capture. Dots cannot consume a colon and still satisfy all six
+fixed separators of a supported record, nor consume LF without DOTALL. ASCII
+makes UTF-codepoint and byte matching identical for this domain. Therefore
+fixed-width name comparison followed by the specified field capture is exact
+for the accepted grammar, not an approximation of arbitrary PCRE.
+
+A distinct selected name produces a distinct literal pattern; repeated values
+of the same pattern do not create new identical sysitems. Every text instance
+matched by each distinct pattern is kept, including identical source rows and
+cross-pattern overlap. For example a.b can additionally select axb, even when
+axb itself has an initially excluded UID/shell. UID and home populations are
+independent: empty homes do not contribute a home capture but still contribute
+UID captures. Leading-zero UID spellings remain intact until OVAL integer
+comparison, where canonical decimal equality applies with multiplicity.
+
+Classes, parentheses (capturing/noncapturing), quantifiers, alternation, anchors,
+escapes, lookahead/lookbehind, backreferences, inline modifiers, callouts and
+other special PCRE syntax are outside N and cause ERROR before any verdict.
+Unicode and invalid UTF-8 source text are outside the ASCII observation domain
+and cause ERROR, including in initially unselected rows. This also rejects
+invalid PCRE syntax without attempting compilation. No regex engine, callout,
+eval, dynamic command, or new PCRE dependency is used at runtime.
+
+Resource contract: existing source/frame limits (source 1..4194286 bytes,
+65536 rows, 16384 bytes/line), projection limits, at most 262144 selected-pattern
+by source-row pairs, at most 65536 UID capture instances, at most 65536 homes,
+and 128-byte names/4096-byte home paths. Exceeding any bound is ERROR, never a
+partial match set. A finite byte/operation bound is not a wall-clock deadline.
+
+### Exact approved rule semantics and applicability
+
+Existence compares ALL home captures with DISTINCT collected directory paths.
+Shared homes or overlapping patterns can make these counts differ even when
+all distinct directories exist. Missing leaf paths have no collected file item.
+Ownership tests each collected directory owner against the entire expected UID
+capture multiset (var_check=only one), and requires uniqueness of the collected
+owners. It does NOT check UID/home pairing. Two exchanged owners can pass; this
+is an explicit inherited limitation, not a stronger security guarantee. Repeated
+numeric UID captures can fail only-one membership even if one owner is present.
+Permissions checks directory metadata against mask 07027 (SUID/SGID/sticky,
+group-write and other-read/write/execute), without requiring all 0750 grant bits.
+Modes 0000, 0100, 0200, 0400, 0700, 0710, 0740 and 0750 can therefore pass.
+
+Empty complete collectors are handled using reviewed OpenSCAP 1.4.4 source
+semantics: probe_cobj_compute_flag/probe filter handling produce DOES_NOT_EXIST
+when no items remain; COUNT preserves its input collection flag; variable
+objects therefore have no item for that flag; none_exist/any_exist accept it.
+Consequently no selected accounts, or selected accounts with only empty home
+captures, can satisfy these pinned rules on complete supported input. No claim
+that an empty home field is secure is implied. For positive home captures and
+all homes absent, existence fails while the two any_exist ownership/permission
+checks can pass vacuously. Missing-parent/access/I/O uncertainty is ERROR instead.
+Relevant reviewed engine files: probes/probe-api.c, probes/probe/worker.c,
+oval_component.c, oval_variable.c, oval_sexp.c, results/oval_resultTest.c.
+Item references are deduplicated by sysitem ID in oval_sexp.c; file items for
+the same canonical path/metadata are identical, whereas text instance/pattern
+items remain distinguishable. These source/fixture arguments are not a real
+OpenSCAP/Rocky runtime qualification or a global scanner equivalence claim.
+
+Only existence has system_with_kernel applicability here. Fresh RPM evidence
+proves presence/absence; failed or changed inventory is ERROR. Kernel absence
+yields existence=NOT_APPLICABLE while ownership/permissions still execute.
+The whole-control result is ERROR first, then NON_COMPLIANT, then SUCCESS if
+any applicable rule succeeds. All-NA aggregates to NOT_APPLICABLE only when
+all three inputs prove NA; that defensive branch is unit-tested but is NOT
+manufactured on the supported RHEL scope, where ownership/permissions apply.
+
+### Additive APIs and safe targeted metadata
+
+rlch_identity_home_rows PASSWD_PATH returns ROW|NAME|UID_TEXT|HOME|SHELL on a
+controlled INTERNAL stdout channel, preserving input order and duplicates.
+No authentication, GID or GECOS field is projected. This projection must never
+be logged or exposed as CLI diagnostics. Return 0 only after strict complete
+observation, 2 on rejected/failed observation, no trusted partial projection.
+The historical rows/gid_fields/uid_values/user_names/group_name_counts APIs
+retain their contracts and limitations; the old truncation behavior is not fixed.
+
+rlch_identity_home_metadata HOME_PATH returns PRESENT plus one bounded lstat
+record (type/mode, device, inode, UID, GID, mode, link count, mtime, ctime), or
+ABSENT plus parent evidence. Return 0 for stable presence/absence, 2 for error.
+Paths must be absolute canonical ASCII <=4096 bytes, without aliases, traversal,
+symlink ancestors or uncontrolled final links. Relative/aliased paths remain
+selected by the normative collector but give ERROR at safe observation, never
+silent exclusion. Non-directory objects and unsafe/unobservable parents also
+give ERROR; no purported exact scanner verdict outside this safe path domain.
+
+The API opens/pins the parent directory, compares its path and descriptor
+metadata, compares two anchored target lstats with a direct lstat, then checks
+the parent again. No directory contents are enumerated or opened. The target
+itself need not be readable/executable; mode 0000 can be observed. Only the
+parent must be accessible. No directory hardlink-count-one requirement is
+invented. GNU stat C-locale ENOENT is distinguished from other errors ONLY under
+the verified searchable parent descriptor, with bounded private output. Denied
+access, producer errors, other metadata errors, replacement or observable
+mutation give ERROR. No path error is printed. The actual numeric directory
+owner, the account UID text/integer and the audit process EUID are distinct.
+
+The module brackets two independent complete source observations and two
+complete metadata observations per distinct selected path, with outer source
+stamps and a second applicability check. Any instability or missing evidence
+invalidates all subresults, including an earlier duplicate/permission finding.
+Decoded internal protocols and result aggregation are defensively checked.
+
+All data-bearing operations run in untraced subshells, preserving caller state.
+The module exposes only fixed subrule labels and bounded counts. A caller
+tracing its OWN direct API invocation may trace that invocation/path argument;
+the module invokes these APIs only after tracing is disabled. No raw field,
+home path, credential or internal projection is emitted by check/validate/apply
+on success, finding or error. Output-device failure is not transactional: an
+API caller must discard data on nonzero status. No temporary raw-data file,
+recursive walk, external NSS enumeration or administrative command is used.
+
+check and validate are fresh; apply is observation-only, returning 0/3 when
+appropriate and otherwise ERROR with manual guidance. rollback is a silent,
+idempotent no-op. No CHANGED, directory creation/removal, chown/chmod/chgrp,
+ACL/SELinux/account/system-file change is implemented.
+
+Residual limits: no atomic snapshot or proof against unobservable ABA or changes
+after observation. Normal reads can affect atime. A trusted GNU/Linux runtime,
+/proc descriptor access and expected coreutils formats are required. Paths on
+mounted/remote filesystems are not excluded, but stalled I/O/automount effects
+and elapsed time are not controlled by byte bounds. Hostile kernel/runtime
+substitution, effective ACL/SELinux access, and unsupported path/encoding/regex
+semantics are not certified. Real Rocky Linux 10.2 validation must include
+explicit OpenSCAP selection of ALL THREE rules (ownership excluded by default),
+scanner versions/flags, fixtures for overlap/shared/empty homes, SELinux/ACL,
+performance, reboot/post-reboot idempotence and golden image qualification.
+
+### Verification evidence
+
+Added 36 library tests and 60 module tests: 96 additions to baseline 6102,
+expected complete plan 1..6198. All 264 prior library tests remain an exact byte
+prefix. The targeted 359-case run passed all 300 library tests plus the initial
+59 module cases; the final frozen 60-case module run passed with zero failure/
+skip. Together these cover 360 distinct library/module cases. Previous-control
+regressions: 302 passes, zero failure/skip across 7.2.3 through 7.2.7.
+
+Tests cover the accepted/rejected PCRE grammar, unsupported constructs (including
+extra groups and callouts), Unicode, UID spellings, excluded/unknown/empty shells,
+all capture instances, zero/empty/shared/missing homes, swapped/foreign/repeated
+owners, every forbidden mode bit, safe-path/I/O/metadata/read failures, whole-row
+and repeated truncations, mutations, bounds, tracing/privacy, source preservation,
+NSS independence, per-rule applicability, result aggregation and lifecycle.
+Reader/completeness tests use the actual APIs. Only isolated ownership policy
+fixtures substitute st_uid, to avoid privileged fixture chown in CI. This is
+not presented as a filesystem-owner or real-host qualification. A preliminary
+administration-test shim for rm/mkdir interfered with Bats cleanup despite all
+TAP cases passing; it was removed. Actual absence of mutation is checked with
+fixture metadata/content/file-set comparisons and administration-command guards.
+
+GNU grep PCRE reference tests execute in Bats for simple, dotted, overlapping
+and duplicate fixtures, comparing UID multiplicities and complete home captures.
+An additional external validation-only PCRE2 UTF+MULTILINE experiment evaluates
+the ORIGINAL pinned expressions: all 84 names of lengths 1..3 over a,b,dot,hyphen
+(7056 pattern/name pairs) yield exactly the same 399 UID and 399 home captures,
+with exactly one participating capture per second-stage match. Separate special-
+selection and duplicate fixtures also match every capture and count. This
+supports the constructive grammar proof; it does not establish global PCRE or
+OpenSCAP equivalence. No validation-only Python/PCRE helper is a repo dependency.
+
+Bash syntax, genuine Bats preprocessing/syntax and ShellCheck 0.9.0 pass on all
+five code/test paths. ShellCheck 0.9.0 also passes all 42 paths in the unchanged
+workflow scope. The new module is explicitly checked locally because the
+existing workflow ShellCheck scope does not include module paths.
+
+Complete frozen local suite: all 251 Bats files exactly once in eight disjoint
+batches, plans 798,674,1003,773,647,754,704,845, total 6198. Every batch exits 0:
+6196 passes, zero failures and the two inherited local Unix-socket skips in
+6.2.1.2 and 6.2.2.1.2. This environment denies socket creation; no new skip or
+workaround. Exact-SHA GitHub CI must establish all 6198 passes without skips.
+All five code/test SHA256 locks stayed unchanged throughout the final module,
+regression and complete runs. All 264 historical library tests remain byte-
+identical. git diff --check and exact six-file scope checks pass.
+
+Bash parent-directory open is not an O_NOFOLLOW/O_NONBLOCK atomic path-resolution
+transaction; substitution between checks/open can still cause blocking or a
+rejected observation. This residual is not hidden by successful metadata checks.
+No security claim against a hostile filesystem/kernel replacing objects in an
+unobservable ABA sequence is made.
+
+Final SHA/tree/parent/compare and exact-SHA CI identifiers are reported externally
+to avoid a second documentation commit. This exception closes with CIS 7.2.8.
+STOP after final CI; no CIS 7.2.9 work is authorized by this change.

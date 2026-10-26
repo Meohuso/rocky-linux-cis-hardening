@@ -1072,3 +1072,174 @@ group_count_error() {
     run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|root\nNAME|user' ]
     group_counts 2 1
 }
+
+# Additive strict home/account observations. Fixtures only; old tests unchanged.
+home_rows_error() { run rlch_identity_home_rows "$P"; [ "$status" -eq 2 ]; [ -z "$output" ]; }
+home_meta_error() { run rlch_identity_home_metadata "$H"; [ "$status" -eq 2 ]; [ -z "$output" ]; }
+home_dir() { H="$BATS_TEST_TMPDIR/home"; mkdir "$H"; chmod 0750 "$H"; }
+@test "idobs home rows retain exact names UID spellings homes shells and duplicates" {
+    printf 'a.b:PRIVATE_AUTH:0001:7:PRIVATE_GECOS:/fixture/a:/unknown\na.b:x:0999:8::/fixture/b:\n' > "$P"
+    run rlch_identity_home_rows "$P"; [ "$status" -eq 0 ]; [ "$output" = $'ROW|a.b|0001|/fixture/a|/unknown\nROW|a.b|0999|/fixture/b|' ]
+}
+@test "idobs home rows preserve empty relative and unusual homes as internal data" {
+    printf 'a:x:1000:7:::\nb:x:1001:7::relative:/bin/bash\nc:x:1002:7::/fixture/a b:/bin/bash\n' > "$P"
+    run rlch_identity_home_rows "$P"; [ "$status" -eq 0 ]; [ "$output" = $'ROW|a|1000||\nROW|b|1001|relative|/bin/bash\nROW|c|1002|/fixture/a b|/bin/bash' ]
+}
+@test "idobs home rows no authentication GECOS or GID projection" {
+    printf 'name:$6$PRIVATE_HASH:0001:PRIVATE_GID:PRIVATE_GECOS:/fixture:/shell\n' > "$P"
+    run rlch_identity_home_rows "$P"; [ "$status" -eq 0 ]; [ "$output" = 'ROW|name|0001|/fixture|/shell' ]
+}
+@test "idobs home rows all PCRE syntax outside proved literal-dot grammar rejected" {
+    for name in '[ab]' '(a)' 'a+' 'a*' 'a?' 'a|b' '^a' 'a$' 'a\1' 'a(?=b)b' '(?<=a)b' '(?:a)' '(?C1)' 'a{2}' 'a['; do
+        printf '%s:x:1000:7::/fixture:/bin/bash\n' "$name" > "$P"; home_rows_error
+    done
+}
+@test "idobs home rows Unicode in selected and unselected rows is outside ASCII domain" {
+    printf 'élève:x:1000:7::/fixture:/bin/bash\n' > "$P"; home_rows_error
+    printf 'root:x:0:0:PRIVATE_é:/:/bin/bash\n' > "$P"; home_rows_error
+}
+@test "idobs home rows UID text bounds and kernel UID range are explicit" {
+    for uid in BAD -1 4294967295 999999999999999999999999999999999; do printf 'name:x:%s:7::/fixture:/bin/bash\n' "$uid" > "$P"; home_rows_error; done
+    printf 'name:x:00000000000000000000000000000001:7::/fixture:/bin/bash\n' > "$P"
+    run rlch_identity_home_rows "$P"; [ "$status" -eq 0 ]; [[ "$output" == *'00000000000000000000000000000001'* ]]
+}
+@test "idobs home rows length limits apply without silent truncation" {
+    name="$(printf '%129s' '' | tr ' ' a)"; printf '%s:x:1000:7::/fixture:/bin/bash\n' "$name" > "$P"; home_rows_error
+    printf 'a:x:1000:7::/%4096s:/bin/bash\n' x > "$P"; home_rows_error
+}
+@test "idobs home rows malformed blank empty-name pipe and controls reject whole source" {
+    for bad in '' 'a:x:1000:7' ':x:1000:7::/fixture:/bin/bash' 'a:x:1000:7:PRIVATE|DATA:/fixture:/bin/bash' $'a:x:1000:7::/fixture:/bin/bash\r'; do
+        printf 'good:x:1000:7::/fixture:/bin/bash\n%s\n' "$bad" > "$P"; home_rows_error
+    done
+}
+@test "idobs home rows missing empty unreadable and insecure sources rejected" {
+    rm "$P"; home_rows_error; : > "$P"; home_rows_error
+    printf 'a:x:1000:7::/fixture:/bin/bash\n' > "$P"; for mode in 0000 0664 0666; do chmod "$mode" "$P"; home_rows_error; done
+}
+@test "idobs home rows symlink and hardlink guards retained" {
+    ln "$P" "$P.alias"; home_rows_error; rm "$P.alias"
+    mv "$P" "$P.real"; ln -s "$P.real" "$P"; home_rows_error
+}
+@test "idobs home rows complete-row repeated truncations cannot hide later accounts" {
+    rlch_identity_stream() { /usr/bin/head -n 1; }; home_rows_error; home_rows_error
+}
+@test "idobs home rows zero-byte and mid-record truncations rejected" {
+    rlch_identity_stream() { :; }; home_rows_error; rlch_identity_stream() { /usr/bin/head -c 10; }; home_rows_error
+}
+@test "idobs home rows producer error and stderr never publish prefix" {
+    rlch_identity_stream() { /usr/bin/cat; return 87; }; home_rows_error
+    rlch_identity_stream() { /usr/bin/cat; printf PRIVATE_SENTINEL >&2; }; home_rows_error
+}
+@test "idobs home rows forged frame appended data missing LF and NUL rejected" {
+    printf 'a:x:1000:7::/fixture:/bin/bash' > "$P"; home_rows_error
+    printf 'a:PRIVATE\000:1000:7::/fixture:/bin/bash\n' > "$P"; home_rows_error
+    printf 'a:x:1000:7::/fixture:/bin/bash\n' > "$P"
+    rlch_identity_stream() { /usr/bin/cat; printf 'RLCH-IDENTITY-END\n'; }; home_rows_error
+}
+@test "idobs home rows source mutation and pathname replacement invalidate evidence" {
+    rlch_identity_stream() { /usr/bin/cat; printf 'later:x:1000:7::/fixture:/bin/bash\n' >> "$P"; }; home_rows_error
+    rlch_identity_stream() { /usr/bin/cat; cp "$P" "$P.new"; mv "$P.new" "$P"; }; home_rows_error
+}
+@test "idobs home rows size line and aggregate bounds enforced" {
+    printf 'a:%17000s:1000:7::/fixture:/bin/bash\n' X > "$P"; home_rows_error
+    awk 'BEGIN{for(i=0;i<65537;i++)print "a:x:1000:7::/fixture:/bin/bash"}' > "$P"; home_rows_error
+    awk 'BEGIN{for(i=0;i<500;i++){printf "a:";for(j=0;j<10000;j++)printf "x";print ":1000:7::/fixture:/bin/bash"}}' > "$P"; home_rows_error
+}
+@test "idobs home rows stdout failure and wrong arity return silent ERROR" {
+    result=0; rlch_identity_home_rows "$P" > /dev/full 2> "$BATS_TEST_TMPDIR/err" || result=$?; [ "$result" -eq 2 ]; [ ! -s "$BATS_TEST_TMPDIR/err" ]
+    run rlch_identity_home_rows; [ "$status" -eq 2 ]; [ -z "$output" ]
+    run rlch_identity_home_rows "$P" extra; [ "$status" -eq 2 ]; [ -z "$output" ]
+}
+@test "idobs home rows tracing stays private on success and producer failure" {
+    for noisy in no yes; do
+        run bash -c 'source "$1"; if [[ "$3" == yes ]]; then rlch_identity_stream(){ /usr/bin/cat; printf PRIVATE_AUTH >&2; }; fi; set -x; rc=0; rlch_identity_home_rows "$2" >/dev/null || rc=$?; [[ $- == *x* ]] || exit 99; exit "$rc"' bash "$BATS_TEST_DIRNAME/../lib/identity_observation.sh" "$P" "$noisy"
+        if [[ "$noisy" == yes ]]; then [ "$status" -eq 2 ]; else [ "$status" -eq 0 ]; fi
+        [[ "$output" != *PRIVATE* && "$output" != *'ROW|'* ]]
+    done
+}
+@test "idobs home metadata exact stable type UID GID and permissions" {
+    home_dir; run rlch_identity_home_metadata "$H"; [ "$status" -eq 0 ]; [[ "$output" == PRESENT\|* ]]
+    IFS='|' read -r kind raw _dev _ino owner group mode rest <<< "$output"
+    [ "$owner" = "$(id -u)" ]; [ "$group" = "$(id -g)" ]; [ "$mode" = 750 ]; (( (16#$raw & 0170000)==0040000 ))
+}
+@test "idobs home metadata reliable missing leaf differs from I/O error" {
+    H="$BATS_TEST_TMPDIR/absent"; run rlch_identity_home_metadata "$H"; [ "$status" -eq 0 ]; [[ "$output" == ABSENT\|* ]]
+    H="$BATS_TEST_TMPDIR/missing/absent"; home_meta_error
+}
+@test "idobs home metadata mode zero remains observable without opening final directory" {
+    home_dir; chmod 0000 "$H"; run rlch_identity_home_metadata "$H"; [ "$status" -eq 0 ]; [[ "$output" == *'|0|'* ]]; chmod 0750 "$H"
+}
+@test "idobs home metadata relative alias trailing slash and traversal paths rejected" {
+    home_dir; saved="$H"
+    for H in relative "$saved/" "$BATS_TEST_TMPDIR/./home" "$BATS_TEST_TMPDIR/../home" "$BATS_TEST_TMPDIR//home"; do home_meta_error; done
+}
+@test "idobs home metadata symlink and symlink ancestors rejected" {
+    home_dir; mv "$H" "$H.real"; ln -s "$H.real" "$H"; home_meta_error; rm "$H"
+    mkdir "$H.parent"; mkdir "$H.parent/home"; ln -s "$H.parent" "$H"; H="$H/home"; home_meta_error
+}
+@test "idobs home metadata dangling links files and FIFO are not absence" {
+    H="$BATS_TEST_TMPDIR/home"; ln -s missing "$H"; home_meta_error; rm "$H"; : > "$H"; home_meta_error; rm "$H"; mkfifo "$H"; home_meta_error
+}
+@test "idobs home metadata rejects controls pipes Unicode and overlong paths" {
+    for H in '/fixture/PRIVATE|name' $'/fixture/PRIVATE\nname' /fixture/élève "$(printf '/%4100s' X)"; do home_meta_error; done
+}
+@test "idobs home metadata treats shell metacharacters as inert literal path data" {
+    H="$BATS_TEST_TMPDIR/\$(touch PRIVATE_FLAG)[*]"; mkdir "$H"; run rlch_identity_home_metadata "$H"; [ "$status" -eq 0 ]; [[ "$output" == PRESENT\|* ]]; [ ! -e PRIVATE_FLAG ]
+}
+@test "idobs home metadata no recursive directory enumeration or content access" {
+    home_dir; mkfifo "$H/never-open"; mkdir "$H/unreadable"; chmod 0000 "$H/unreadable"
+    find() { return 99; }; ls() { return 99; }
+    run rlch_identity_home_metadata "$H"; [ "$status" -eq 0 ]; chmod 0700 "$H/unreadable"
+}
+@test "idobs home metadata observable replacement during metadata reads rejected" {
+    home_dir
+    _rlch_identity_home_stat() {
+        local data; data="$(/usr/bin/stat -c '%f|%d|%i|%u|%g|%a|%h|%y|%z' -- "$1")" || return 2
+        if [[ "$1" == /proc/self/fd/*/home && ! -e "$H.flag" ]]; then touch "$H.flag"; mv "$H" "$H.old"; mkdir "$H"; fi
+        printf '%s\n' "$data"
+    }
+    home_meta_error
+}
+@test "idobs home metadata producer metadata failure stays private" {
+    home_dir; _rlch_identity_home_stat() { printf PRIVATE_AUTH >&2; return 2; }; home_meta_error
+}
+@test "idobs home metadata parent permissions and absence uncertainty are ERROR" {
+    home_dir; mkdir "$H/child"; H="$H/child"; chmod 0000 "$BATS_TEST_TMPDIR/home"
+    if [[ "$(id -u)" -ne 0 ]]; then home_meta_error; fi
+    chmod 0750 "$BATS_TEST_TMPDIR/home"
+    _rlch_identity_home_stat() { return 2; }; home_meta_error
+}
+@test "idobs home metadata internal values stay untraced and caller trace persists" {
+    home_dir
+    run bash -c 'source "$1"; set -x; rlch_identity_home_metadata "$2" >/dev/null; [[ $- == *x* ]]' bash "$BATS_TEST_DIRNAME/../lib/identity_observation.sh" "$H"
+    [ "$status" -eq 0 ]; [[ "$output" != *PRESENT* ]]
+}
+@test "idobs home metadata output failure and wrong arity fail closed" {
+    home_dir; result=0; rlch_identity_home_metadata "$H" > /dev/full || result=$?; [ "$result" -ne 0 ]
+    run rlch_identity_home_metadata; [ "$status" -eq 2 ]; [ -z "$output" ]
+    run rlch_identity_home_metadata "$H" extra; [ "$status" -eq 2 ]; [ -z "$output" ]
+}
+@test "idobs home observations preserve contents permissions and file set" {
+    home_dir; printf PRIVATE_CONTENT > "$H/file"
+    before="$(stat -c '%i:%a:%u:%g:%Y:%Z:%s' "$P" "$H" "$H/file")"; data="$(sha256sum "$P" "$H/file")"; files="$(find "$BATS_TEST_TMPDIR" -type f | sort)"
+    rlch_identity_home_rows "$P" >/dev/null; rlch_identity_home_metadata "$H" >/dev/null; rlch_identity_home_metadata "$H" >/dev/null
+    [ "$before" = "$(stat -c '%i:%a:%u:%g:%Y:%Z:%s' "$P" "$H" "$H/file")" ]; [ "$data" = "$(sha256sum "$P" "$H/file")" ]; [ "$files" = "$(find "$BATS_TEST_TMPDIR" -type f | sort)" ]
+}
+@test "idobs home modes do not change previous API contracts" {
+    unknown "$P" home_rows
+    run rlch_identity_rows "$P" passwd; [ "$status" -eq 0 ]; [ "$output" = $'0\n1001' ]
+    run rlch_identity_user_names "$P"; [ "$status" -eq 0 ]; [ "$output" = $'NAME|root\nNAME|user' ]
+    run rlch_identity_gid_fields "$G" group; [ "$status" -eq 0 ]; [ "$output" = $'PRESENT|PRESENT|NA|0\nPRESENT|PRESENT|NA|1001' ]
+    run rlch_identity_uid_values "$P" "$N"; [ "$status" -eq 0 ]; [ "$output" = $'SOURCE|FILES\nUID|0\nUID|1001' ]
+    run rlch_identity_group_name_counts "$G"; [ "$status" -eq 0 ]; [ "$output" = 'COUNTS|2|2' ]
+}
+@test "idobs home rows maximum accepted name and record bounds preserve all instances" {
+    name="$(printf '%128s' '' | tr ' ' a)"; printf '%s:x:1000:7::/fixture:/bin/bash\n' "$name" > "$P"
+    run rlch_identity_home_rows "$P"; [ "$status" -eq 0 ]; [ "$output" = "ROW|$name|1000|/fixture|/bin/bash" ]
+    awk 'BEGIN{for(i=0;i<65536;i++)print "root:x:0:7::/:/bin/false"}' > "$P"
+    rlch_identity_home_rows "$P" > "$BATS_TEST_TMPDIR/rows"; [ "$(wc -l < "$BATS_TEST_TMPDIR/rows")" -eq 65536 ]
+}
+@test "idobs home metadata parent descriptors do not leak to caller" {
+    home_dir; before=(/proc/$$/fd/*); rlch_identity_home_metadata "$H" >/dev/null; rlch_identity_home_metadata "$H" >/dev/null; after=(/proc/$$/fd/*)
+    [ "${before[*]}" = "${after[*]}" ]
+}

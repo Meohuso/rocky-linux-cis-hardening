@@ -122,6 +122,78 @@ rlch_identity_group_name_counts() (
     _rlch_identity_rows "$1" group_name_counts 2>/dev/null || return 2
 )
 
+# PASSWD_PATH => ROW|NAME|UID_TEXT|HOME|SHELL, in source order, all duplicates.
+# Internal controlled projection: NEVER log it. Seven fields; printable ASCII
+# (no pipe), NAME in [A-Za-z0-9_.-]{1,128}, decimal UID spelling <=32 bytes,
+# numeric UID <=4294967294, HOME <=4096 bytes. Other fields are not published.
+# This is a bounded representation domain, not interactive-user selection.
+# Unsupported records fail the entire observation, including unselected rows.
+# Same strict exact-byte/single-link/descriptor/frame/stability guards as names.
+# 0 complete observation, 2 error, no trusted partial output; caller checks RC.
+rlch_identity_home_rows() (
+    set +x
+    [[ $# -eq 1 ]] || return 2
+    _rlch_identity_rows "$1" home_rows 2>/dev/null || return 2
+)
+
+# Private lstat, with bounded private C-locale diagnostics. An ENOENT result is
+# accepted only under the pinned, searchable parent descriptor in the public
+# API. No other stat failure is treated as absence. No pathname is published.
+_rlch_identity_home_stat() {
+    local data rc=0
+    data="$(LC_ALL=C /usr/bin/stat -c '%f|%d|%i|%u|%g|%a|%h|%y|%z' -- "$1" 2>&1)" || rc=$?
+    (( ${#data} <= 8192 )) || return 2
+    if [[ "$rc" -ne 0 ]]; then
+        [[ "$rc" -eq 1 && "$data" != *$'\n'* && ( "$data" == 'stat: cannot stat'*': No such file or directory' || "$data" == '/usr/bin/stat: cannot stat'*': No such file or directory' ) ]] || return 2
+        printf 'ABSENT\n'
+        return 0
+    fi
+    [[ "$data" =~ ^[0-9a-f]{4,8}\|[0-9]+\|[0-9]+\|[0-9]+\|[0-9]+\|[0-7]{1,4}\|[0-9]+\|[0-9:.+\ -]+\|[0-9:.+\ -]+$ ]] || return 2
+    printf '%s\n' "$data"
+}
+
+# HOME_PATH => PRESENT|HEX_TYPE_MODE|DEV|INO|UID|GID|MODE|NLINK|MTIME|CTIME
+# or ABSENT|PARENT_LSTAT. Return 0 for a complete stable presence/absence proof,
+# 2 for unsafe/unknown metadata, paths or I/O. No policy or recursive traversal.
+# ASCII canonical absolute paths <=4096 bytes; no aliases/symlink ancestors.
+# A parent FD anchors two lstats. Searchable/readable parent required; final
+# directory need not be readable/executable (mode 0000 is valid metadata).
+# Only directories and reliably absent leaf names are supported. Symlinks and
+# non-directories fail closed, not silently followed or treated as absent.
+# No atomic/ABA/elapsed-time guarantee; caller brackets complete snapshots.
+rlch_identity_home_metadata() (
+    set +x
+    export LC_ALL=C
+    [[ $# -eq 1 ]] || return 2
+    local path="$1" parent leaf fd before opened middle after first second direct raw
+    [[ "$path" == /* && ${#path} -le 4096 && "$path" != *'|'* && "$path" != *[!\ -~]* ]] || return 2
+    if [[ "$path" == / ]]; then parent=/; leaf=.
+    else
+        [[ "$path" != */ && "$path" != *//* && "$path" != */./* && "$path" != */../* && "$path" != */. && "$path" != */.. ]] || return 2
+        parent="${path%/*}"; parent="${parent:-/}"; leaf="${path##*/}"
+    fi
+    [[ -d "$parent" && ! -L "$parent" && -x "$parent" ]] || return 2
+    [[ "$(/usr/bin/realpath -e -- "$parent" 2>/dev/null)" == "$parent" ]] || return 2
+    before="$(_rlch_identity_home_stat "$parent")" || return 2
+    [[ "$before" != ABSENT ]] || return 2
+    { exec {fd}<"$parent"; } 2>/dev/null || return 2
+    opened="$(LC_ALL=C /usr/bin/stat -Lc '%f|%d|%i|%u|%g|%a|%h|%y|%z' -- "/proc/self/fd/$fd" 2>/dev/null)" || return 2
+    [[ "$before" == "$opened" ]] || return 2
+    first="$(_rlch_identity_home_stat "/proc/self/fd/$fd/$leaf")" || return 2
+    direct="$(_rlch_identity_home_stat "$path")" || return 2
+    second="$(_rlch_identity_home_stat "/proc/self/fd/$fd/$leaf")" || return 2
+    middle="$(LC_ALL=C /usr/bin/stat -Lc '%f|%d|%i|%u|%g|%a|%h|%y|%z' -- "/proc/self/fd/$fd" 2>/dev/null)" || return 2
+    after="$(_rlch_identity_home_stat "$parent")" || return 2
+    [[ "$before" == "$middle" && "$before" == "$after" && "$first" == "$second" && "$first" == "$direct" ]] || return 2
+    [[ "$(/usr/bin/realpath -e -- "$parent" 2>/dev/null)" == "$parent" ]] || return 2
+    exec {fd}<&-
+    if [[ "$first" == ABSENT ]]; then printf 'ABSENT|%s\n' "$before" || return 2; return; fi
+    raw="${first%%|*}"
+    [[ "$raw" =~ ^[0-9a-f]{4,8}$ ]] || return 2
+    (( (16#$raw & 0170000)==0040000 )) || return 2
+    printf 'PRESENT|%s\n' "$first" || return 2
+) 2>/dev/null
+
 _rlch_identity_observation_stamp() {
     if [[ "$2" == shadow_presence ]]; then
         _rlch_identity_file_stamp "$1" true
@@ -132,7 +204,7 @@ _rlch_identity_observation_stamp() {
 
 _rlch_identity_rows() (
     local file="$1" kind="$2" before opened after fd rows expected=0 links='' strict=0
-    case "$kind" in password_markers|shadow_presence|gid_passwd|gid_group|uid_values|uid_sources|user_names|group_name_counts) strict=1;; esac
+    case "$kind" in password_markers|shadow_presence|gid_passwd|gid_group|uid_values|uid_sources|user_names|group_name_counts|home_rows) strict=1;; esac
     before="$(_rlch_identity_observation_stamp "$file" "$kind")" || return 2
     if [[ "$strict" -eq 1 ]]; then
         links="$(/usr/bin/stat -c '%h' -- "$file" 2>/dev/null)" || return 2
@@ -233,6 +305,12 @@ _rlch_identity_rows() (
          next
        }
        count=split($0,f,":")
+       if(kind=="home_rows") {
+         if(count!=7 || $0 ~ /[^ -~]/ || index($0,"|") || f[1] !~ /^[A-Za-z0-9_.-]+$/ || length(f[1])>128 ||
+            f[3] !~ /^[0-9]+$/ || length(f[3])>32 || uid_decimal(f[3])=="INVALID" || length(f[6])>4096) invalid()
+         out[++n]="ROW|" f[1] "|" f[3] "|" f[6] "|" f[7]
+         next
+       }
        if(kind=="user_names") {
          if(count!=7 || !name_utf8($0)) invalid()
          out[++n]=(length(f[1]) ? "NAME|" f[1] : "SKIP")
