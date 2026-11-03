@@ -133,3 +133,163 @@ add_mount() {
 @test "fsobs root stat failure diagnostics remain private" {
     rlch_fs_root_stat() { printf 'PRIVATE PATH\n' >&2; return 2; }; unknown
 }
+
+# Additive snapshot contract; all preceding tests remain byte-for-byte intact.
+snapshot() {
+    local fd pid rc=0
+    SNAPSHOT=()
+    exec {fd}< <(rlch_fs_snapshot "${S_PATH:-$R}" "${S_DEPTH:-2}" "${S_POLICY:-all}" "$M"); pid=$!
+    mapfile -d '' -t SNAPSHOT <&"$fd" || rc=2
+    exec {fd}<&-
+    wait "$pid" || rc=2
+    return "$rc"
+}
+snapshot_error() { run snapshot; [ "$status" -eq 2 ]; [ -z "$output" ]; }
+save_names_producer() {
+    eval "$(declare -f _rlch_fs_snapshot_names_stream | sed '1s/_rlch_fs_snapshot_names_stream/real_snapshot_names/')"
+}
+@test "fs snapshot empty directory is one complete root tuple" {
+    snapshot; [ "${#SNAPSHOT[@]}" -eq 12 ]; [ "${SNAPSHOT[0]}" = "$R" ]; [ "${SNAPSHOT[1]}" = d ]; [ "${SNAPSHOT[11]}" = 0 ]
+}
+@test "fs snapshot stable file metadata and zero depth" {
+    printf PRIVATE > "$R/file"; chmod 0640 "$R/file"; S_PATH="$R/file"; S_DEPTH=0
+    snapshot; [ "${#SNAPSHOT[@]}" -eq 12 ]; [ "${SNAPSHOT[1]}" = f ]; [ "${SNAPSHOT[5]}" = "$(id -u)" ]; [ "${SNAPSHOT[6]}" = "$(id -g)" ]; [ "${SNAPSHOT[7]}" = 640 ]
+}
+@test "fs snapshot depths zero one and two preserve populations" {
+    mkdir -p "$R/child/grandchild"; touch "$R/child/file" "$R/child/grandchild/deeper"
+    S_DEPTH=0; snapshot; [ "${#SNAPSHOT[@]}" -eq 12 ]
+    S_DEPTH=1; snapshot; [ "${#SNAPSHOT[@]}" -eq 24 ]
+    S_DEPTH=2; snapshot; [ "${#SNAPSHOT[@]}" -eq 48 ]
+}
+@test "fs snapshot missing leaf reliably differs from failure" {
+    S_PATH="$R/missing"; snapshot; [ "${SNAPSHOT[1]}" = a ]; [ "${SNAPSHOT[0]}" = "$S_PATH" ]
+}
+@test "fs snapshot missing ancestor produces reliable empty target observation" {
+    S_PATH="$R/missing/deeper"; snapshot; [ "${#SNAPSHOT[@]}" -eq 12 ]; [ "${SNAPSHOT[1]}" = a ]
+}
+@test "fs snapshot symlink leaf dangling link and cycle never followed" {
+    ln -s / "$R/link"; ln -s missing "$R/dangling"; ln -s . "$R/cycle"
+    snapshot; [ "${#SNAPSHOT[@]}" -eq 48 ]; [ "${SNAPSHOT[13]}" = l ]; [ "${SNAPSHOT[25]}" = l ]; [ "${SNAPSHOT[37]}" = l ]
+}
+@test "fs snapshot symlink ancestors are rejected" {
+    mkdir "$R/real"; ln -s "$R/real" "$R/alias"; S_PATH="$R/alias/file"; snapshot_error
+}
+@test "fs snapshot hardlinks retained as separate directory entries" {
+    touch "$R/a"; ln "$R/a" "$R/b"; snapshot; [ "${#SNAPSHOT[@]}" -eq 36 ]; [ "${SNAPSHOT[15]}" = "${SNAPSHOT[27]}" ]; [ "${SNAPSHOT[16]}" = 2 ]
+}
+@test "fs snapshot FIFO metadata without content read" {
+    mkfifo "$R/fifo"; snapshot; [ "${SNAPSHOT[13]}" = p ]
+}
+@test "fs snapshot arbitrary byte and hostile names are inert and retained" {
+    for name in 'space name' $'tab\tname' $'line\nname' $'trailing\n' 'élève' $'nonutf\377' '$(touch PRIVATE_FLAG)' '-leading' 'glob[*?]' 'pipe|name'; do : > "$R/$name"; done
+    snapshot; [ "${#SNAPSHOT[@]}" -eq 132 ]; [ ! -e PRIVATE_FLAG ]
+}
+@test "fs snapshot newline-containing root retained exactly" {
+    mkdir "$R/line"$'\n'; S_PATH="$R/line"$'\n'; snapshot; [ "${SNAPSHOT[0]}" = "$S_PATH" ]
+}
+@test "fs snapshot long valid names retained" {
+    name="$(printf '%240s' '' | tr ' ' a)"; : > "$R/$name"; snapshot; [ "${SNAPSHOT[12]}" = "$R/$name" ]
+}
+@test "fs snapshot relative aliases and unsupported depths rejected" {
+    for S_PATH in relative "$R/" "$R/./file" "$R/../file" "$R//file"; do snapshot_error; done
+    unset S_PATH; for S_DEPTH in -1 9 01 x; do snapshot_error; done
+}
+@test "fs snapshot overlong path and excessive components rejected" {
+    S_PATH="$(printf '/%4100s' X)"; snapshot_error
+    S_PATH="$R"; for ((i=0;i<65;i++)); do S_PATH+="/a"; mkdir -p "$S_PATH"; done; snapshot_error
+}
+@test "fs snapshot unreadable directory fail closed even privileged" {
+    chmod 0000 "$R"; snapshot_error; chmod 0755 "$R"
+}
+@test "fs snapshot zero mode final directory observable at depth zero" {
+    chmod 0000 "$R"; S_DEPTH=0; snapshot; [ "${SNAPSHOT[7]}" = 0 ]; chmod 0755 "$R"
+}
+@test "fs snapshot inaccessible ancestor is not absence" {
+    mkdir -p "$R/closed/child"; chmod 0000 "$R/closed"; S_PATH="$R/closed/child/missing"; snapshot_error; chmod 0755 "$R/closed"
+}
+@test "fs snapshot complete-boundary silent truncation rejected repeatedly" {
+    touch "$R/a" "$R/b"; _rlch_fs_snapshot_names_stream() { printf 'a\0'; }; snapshot_error; snapshot_error
+}
+@test "fs snapshot zero bytes and unterminated producer data rejected" {
+    touch "$R/a"; _rlch_fs_snapshot_names_stream() { :; }; snapshot_error
+    _rlch_fs_snapshot_names_stream() { printf a; }; snapshot_error
+}
+@test "fs snapshot producer error after otherwise complete enumeration rejected" {
+    save_names_producer; touch "$R/a"; _rlch_fs_snapshot_names_stream() { real_snapshot_names "$@"; return 87; }; snapshot_error
+}
+@test "fs snapshot producer stderr remains private and invalidates success" {
+    save_names_producer; _rlch_fs_snapshot_names_stream() { real_snapshot_names "$@"; printf PRIVATE_PATH >&2; }; snapshot_error
+}
+@test "fs snapshot duplicate and forged trailer records rejected" {
+    _rlch_fs_snapshot_names_stream() { printf 'RLCH-SNAPSHOT-END\0RLCH-SNAPSHOT-END\0'; }; snapshot_error
+    touch "$R/a"; _rlch_fs_snapshot_names_stream() { printf 'a\0a\0'; }; snapshot_error
+}
+@test "fs snapshot real file equal to trailer token is not lost" {
+    touch "$R/RLCH-SNAPSHOT-END"; snapshot; [ "${#SNAPSHOT[@]}" -eq 24 ]; [ "${SNAPSHOT[12]}" = "$R/RLCH-SNAPSHOT-END" ]
+}
+@test "fs snapshot observable creation and source replacement rejected" {
+    save_names_producer; : > "$CALLS"
+    _rlch_fs_snapshot_names_stream() { real_snapshot_names "$@"; if [[ ! -s "$CALLS" ]]; then printf 1 > "$CALLS"; touch "$R/new"; fi; }; snapshot_error
+}
+@test "fs snapshot observable file permission mutation rejected" {
+    save_names_producer; : > "$CALLS"; touch "$R/a"; chmod 0644 "$R/a"
+    _rlch_fs_snapshot_names_stream() { real_snapshot_names "$@"; if [[ -s "$CALLS" ]]; then chmod 0600 "$R/a"; else printf 1 > "$CALLS"; fi; }; snapshot_error
+}
+@test "fs snapshot directory replacement after open rejected" {
+    save_names_producer; : > "$CALLS"
+    _rlch_fs_snapshot_names_stream() { real_snapshot_names "$@"; if [[ ! -s "$CALLS" ]]; then printf 1 > "$CALLS"; mv "$R" "$R.old"; mkdir "$R"; fi; }; snapshot_error
+}
+@test "fs snapshot stat failure cannot become reliable absence" {
+    touch "$R/PRIVATE"; _rlch_fs_snapshot_stat() { printf PRIVATE_PATH >&2; return 2; }; snapshot_error
+}
+@test "fs snapshot malformed metadata rejected" {
+    _rlch_fs_snapshot_stat() { printf '0|0|0|0|0|0|0|0|0|0000\n'; }; snapshot_error
+}
+@test "fs snapshot mounted subtree all versus local policy" {
+    mkdir "$R/remote"; touch "$R/remote/file"; add_mount 20 10 "$R/remote" server:/share nfs
+    S_POLICY=all; snapshot; [ "${#SNAPSHOT[@]}" -eq 36 ]
+    S_POLICY=local; snapshot_error
+}
+@test "fs snapshot unknown local filesystem is ERROR not skipped" {
+    sed -i 's/ ext4 / unknownfs /' "$M"; S_POLICY=local; snapshot_error
+}
+@test "fs snapshot autofs is rejected before traversal" {
+    add_mount 20 10 "$R/autofs" map autofs; _rlch_fs_snapshot_names_stream() { printf PRIVATE >&2; return 99; }; snapshot_error
+}
+@test "fs snapshot mount inventory mutation rejected" {
+    save_names_producer; : > "$CALLS"
+    _rlch_fs_snapshot_names_stream() { real_snapshot_names "$@"; if [[ ! -s "$CALLS" ]]; then printf 1 > "$CALLS"; printf '\n' >> "$M"; fi; }; snapshot_error
+}
+@test "fs snapshot malformed inventory rejected" {
+    printf 'bad\n' > "$M"; snapshot_error
+}
+@test "fs snapshot entry limit rejects a complete oversized directory" {
+    for ((i=0;i<16384;i++)); do : > "$R/$i"; done; snapshot_error
+}
+@test "fs snapshot injected byte overflow rejected without output" {
+    _rlch_fs_snapshot_names_stream() { /usr/bin/awk 'BEGIN{for(i=0;i<2200;i++)printf "%04096d%c",i,0}'; }; snapshot_error
+}
+@test "fs snapshot metadata observation leaves content mode and file atime unchanged" {
+    printf PRIVATE > "$R/file"; touch -a -d '2001-01-01 UTC' "$R/file"; before="$(stat -c '%i:%a:%u:%g:%s:%X:%Y:%Z' "$R/file")"
+    snapshot; [ "$before" = "$(stat -c '%i:%a:%u:%g:%s:%X:%Y:%Z' "$R/file")" ]; [ "$(cat "$R/file")" = PRIVATE ]
+}
+@test "fs snapshot fresh calls observe new names" {
+    snapshot; [ "${#SNAPSHOT[@]}" -eq 12 ]; touch "$R/new"; snapshot; [ "${#SNAPSHOT[@]}" -eq 24 ]
+}
+@test "fs snapshot caller descriptors and shell options unchanged" {
+    before=(/proc/$$/fd/*); old="$(shopt -p nullglob dotglob failglob || true)"; snapshot; after=(/proc/$$/fd/*)
+    [ "${before[*]}" = "${after[*]}" ]; [ "$old" = "$(shopt -p nullglob dotglob failglob || true)" ]
+}
+@test "fs snapshot private values untraced caller trace preserved" {
+    run bash -c 'source "$1"; set -x; rc=0; rlch_fs_snapshot "$2" 1 all "$3" >/dev/null || rc=$?; [[ $- == *x* ]] || exit 99; exit "$rc"' bash "$BATS_TEST_DIRNAME/../lib/filesystem_observation.sh" "$R" "$M"
+    [ "$status" -eq 0 ]; [[ "$output" != *RLCH-SNAPSHOT-END* && "$output" != *'_rlch_fs_snapshot_walk '* ]]
+}
+@test "fs snapshot wrong arity and output device failure return ERROR" {
+    run rlch_fs_snapshot; [ "$status" -eq 2 ]; [ -z "$output" ]
+    result=0; rlch_fs_snapshot "$R" 1 all "$M" > /dev/full || result=$?; [ "$result" -eq 2 ]
+}
+@test "fs snapshot unrelated ancestor sibling creation does not invalidate intact path" {
+    save_names_producer; : > "$CALLS"
+    _rlch_fs_snapshot_names_stream() { real_snapshot_names "$@"; if [[ ! -s "$CALLS" ]]; then printf 1 > "$CALLS"; : > "$BATS_TEST_TMPDIR/unrelated"; fi; }
+    snapshot
+}

@@ -161,3 +161,238 @@ rlch_fs_observe() {
     RLCH_FS_OBSERVATION_ERROR=''
     return 0
 }
+
+# Additive API: rlch_fs_snapshot PATH CHILD_DEPTH all|local MOUNTINFO
+# Controlled INTERNAL stdout: NUL fields, twelve per record:
+# PATH TYPE DEV INO NLINK UID GID MODE SIZE MTIME CTIME CHILD_DEPTH.
+# TYPE=a is reliably absent (remaining metadata identifies its existing parent).
+# Other types: f d l b c p s. No contents or symlink targets are read.
+# Return 0 only for a complete stable snapshot, 2 otherwise. Caller MUST check
+# status before consuming stdout; output-device failure is not transactional.
+# No diagnostics. A private subshell disables tracing and bounds VM to 256 MiB.
+# Limits: depth 0..8, 16384 records, 4096 bytes/path, 8 MiB projection, 64 distinct
+# mount IDs encountered, 64 path components. Mount inventory retains its own
+# existing 4096-record/4-MiB limits. No historical API is changed.
+# Local accepts proven-local ext2/3/4 xfs btrfs tmpfs overlay ramfs only; other
+# filesystems return ERROR, never an incomplete successful traversal. `all`
+# allows mounted filesystems except autofs (which could trigger a mutation).
+# Every directory is pinned by an FD before enumeration, with lstat/opened-FD
+# identity comparison. Independent Bash glob census detects a producer silently
+# truncating even on a complete NUL boundary. Missing final NUL, producer stderr,
+# nonzero status, changed census/metadata/inventory or exceeded bounds fail.
+# Two entire passes plus ancestor guards detect observable changes, not atomic
+# transactions, transient ABA, a hostile kernel/runtime, or elapsed-time bounds.
+# Ancestor opening can race, but an unexpected FD is rejected BEFORE listing.
+# No symlink ancestor is accepted; leaf symlinks are reported without following.
+
+_rlch_fs_snapshot_stat() {
+    LC_ALL=C /usr/bin/stat -c '%d|%i|%h|%u|%g|%a|%s|%y|%z|%f' -- "$1"
+}
+_rlch_fs_snapshot_meta() {
+    local data raw dev ino links uid gid mode size mt ct extra
+    data="$(_rlch_fs_snapshot_stat "$1" 2>&1)" || return 2
+    (( ${#data}<=512 )) || return 2
+    [[ "$data" =~ ^[0-9]+\|[0-9]+\|[0-9]+\|[0-9]+\|[0-9]+\|[0-7]{1,4}\|[0-9]+\|[0-9:.+\ -]+\|[0-9:.+\ -]+\|[0-9a-f]{4,8}$ ]] || return 2
+    IFS='|' read -r dev ino links uid gid mode size mt ct raw extra <<< "$data"
+    [[ -z "$extra" && "$dev" =~ ^(0|[1-9][0-9]{0,18})$ && "$ino" =~ ^[1-9][0-9]{0,19}$ &&
+       "$links" =~ ^[1-9][0-9]{0,19}$ && "$uid" =~ ^(0|[1-9][0-9]{0,9})$ &&
+       "$gid" =~ ^(0|[1-9][0-9]{0,9})$ && "$size" =~ ^(0|[1-9][0-9]{0,18})$ ]] || return 2
+    [[ ${#dev} -lt 19 || "x$dev" < x9223372036854775808 ]] || return 2
+    [[ ${#size} -lt 19 || "x$size" < x9223372036854775808 ]] || return 2
+    [[ ${#ino} -lt 20 || "x$ino" < x18446744073709551616 ]] || return 2
+    [[ ${#links} -lt 20 || "x$links" < x18446744073709551616 ]] || return 2
+    (( uid<=4294967294 && gid<=4294967294 && (16#$raw & ~0177777)==0 && (16#$raw & 07777)==8#$mode )) || return 2
+    printf '%s\n' "$data"
+}
+_rlch_fs_snapshot_open_meta() {
+    LC_ALL=C /usr/bin/stat -Lc '%d|%i|%h|%u|%g|%a|%s|%y|%z|%f' -- "/proc/self/fd/$1"
+}
+_rlch_fs_snapshot_guard() {
+    local dev ino links uid gid mode size mt ct raw
+    IFS='|' read -r dev ino links uid gid mode size mt ct raw <<< "$1"
+    # Existing ancestors only: sibling creation must not invalidate an intact
+    # path. Observed target directories/absence parents keep their FULL stamps.
+    printf '%s|%s|%s|%s|%s|%s\n' "$dev" "$ino" "$uid" "$gid" "$mode" "$raw"
+}
+_rlch_fs_snapshot_names_stream() {
+    LC_ALL=C /usr/bin/find -P "$1/." -mindepth 1 -maxdepth 1 -printf '%f\0'
+}
+_rlch_fs_snapshot_names() {
+    local base="$1" output="$2" fd pid rc=0 value='' bytes=0 n
+    local -n _rfs_names_out="$output"
+    local -a found=() census=()
+    # Bound before mapfile/glob allocation too, through the API's VM limit.
+    census=("$base"/*)
+    (( ${#census[@]}<=16384 && ${#census[@]}+${#_rfs_rows[@]}/12<=16384 )) || return 2
+    exec {fd}< <(
+        set -o pipefail
+        { { _rlch_fs_snapshot_names_stream "$base" 2>&1 1>&3 | /usr/bin/head -c 1 | /usr/bin/awk 'NR {exit 2}'; } 3>&1 && printf 'RLCH-SNAPSHOT-END\0'; } |
+            /usr/bin/head -c 8388609
+    ); pid=$!
+    while IFS= read -r -d '' value <&"$fd"; do
+        bytes=$((bytes+${#value}+1))
+        if (( bytes>8388608 || ${#value}>4096 || ${#found[@]}>16384 )); then rc=2; break; fi
+        found+=("$value")
+    done
+    [[ -z "$value" ]] || rc=2
+    exec {fd}<&-
+    wait "$pid" || rc=2
+    [[ "$rc" == 0 && ${#found[@]} -eq $((${#census[@]}+1)) && "${found[-1]:-}" == RLCH-SNAPSHOT-END ]] || return 2
+    unset 'found[-1]'
+    # Compare the complete unordered producer population against independent
+    # glob entries without interpreting a file name as an array subscript.
+    local -A seen=()
+    for value in "${found[@]}"; do
+        [[ -n "$value" && "$value" != . && "$value" != .. && "$value" != */* && ! ${seen["n:$value"]+yes} ]] || return 2
+        seen["n:$value"]=1
+    done
+    for ((n=0;n<${#census[@]};n++)); do
+        value="${census[n]##*/}"
+        [[ ${seen["n:$value"]+yes} ]] || return 2
+        census[n]="$value"
+    done
+    _rfs_names_out=("${census[@]}")
+}
+_rlch_fs_snapshot_scope() {
+    local path="$1" evidence="$2" i best=-1 length=0 target dev pair fs id
+    dev="${evidence%%|*}"
+    pair="$(( (dev>>8 & 4095) | (dev>>32 & 4294963200) )):$(( (dev & 255) | (dev>>12 & 4294967040) ))"
+    for ((i=0;i<${#_rfs_mounts[@]};i+=10)); do
+        target="${_rfs_mounts[i+4]}"
+        if [[ "$target" == / || "$path" == "$target" || "$path" == "$target/"* ]]; then
+            if (( ${#target}>length )); then best=$i; length=${#target}; fi
+        fi
+    done
+    (( best>=0 )) || return 2
+    [[ "${_rfs_mounts[best+2]}" == "$pair" ]] || return 2
+    fs="${_rfs_mounts[best+6]}"; id="${_rfs_mounts[best]}"
+    [[ "$fs" != autofs ]] || return 2
+    if [[ "$_rfs_policy" == local ]]; then
+        case "$fs" in ext2|ext3|ext4|xfs|btrfs|tmpfs|overlay|ramfs) :;; *) return 2;; esac
+    fi
+    _rfs_seen_mounts["m:$id"]=1
+    (( ${#_rfs_seen_mounts[@]}<=64 ))
+}
+_rlch_fs_snapshot_append() {
+    local path="$1" evidence="$2" depth="$3" type="${4:-}" raw dev ino links uid gid mode size mt ct
+    IFS='|' read -r dev ino links uid gid mode size mt ct raw <<< "$evidence"
+    if [[ -z "$type" ]]; then
+        case "$((16#$raw & 0170000))" in
+            32768) type=f;; 16384) type=d;; 40960) type=l;; 24576) type=b;; 8192) type=c;; 4096) type=p;; 49152) type=s;; *) return 2;;
+        esac
+    fi
+    _rfs_bytes=$((_rfs_bytes+${#path}+${#evidence}+24))
+    (( ${#_rfs_rows[@]}<196608 && _rfs_bytes<=8388608 && ${#path}<=4096 )) || return 2
+    _rfs_rows+=("$path" "$type" "$dev" "$ino" "$links" "$uid" "$gid" "$mode" "$size" "$mt" "$ct" "$depth")
+}
+_rlch_fs_snapshot_walk() {
+    local path="$1" anchor="$2" evidence="$3" depth="$4" fd opened after name child data raw
+    # shellcheck disable=SC2034 # Arrays consumed through namerefs.
+    local -a names=() second=()
+    _rlch_fs_snapshot_scope "$path" "$evidence" || return 2
+    _rlch_fs_snapshot_append "$path" "$evidence" "$depth" || return 2
+    raw="${evidence##*|}"
+    (( (16#$raw & 0170000)==0040000 && depth<_rfs_depth )) || return 0
+    [[ -r "$anchor" && -x "$anchor" ]] || return 2
+    (( (16#$raw & 0444)!=0 && (16#$raw & 0111)!=0 )) || return 2
+    { exec {fd}<"$anchor"; } 2>/dev/null || return 2
+    opened="$(_rlch_fs_snapshot_open_meta "$fd")" || return 2
+    [[ "$opened" == "$evidence" ]] || return 2
+    _rlch_fs_snapshot_names "/proc/self/fd/$fd" names || return 2
+    for name in "${names[@]}"; do
+        child="${path%/}/$name"
+        (( ${#child}<=4096 )) || return 2
+        data="$(_rlch_fs_snapshot_meta "/proc/self/fd/$fd/$name")" || return 2
+        _rlch_fs_snapshot_walk "$child" "/proc/self/fd/$fd/$name" "$data" "$((depth+1))" || return 2
+    done
+    _rlch_fs_snapshot_names "/proc/self/fd/$fd" second || return 2
+    rlch_fs_equal names second || return 2
+    after="$(_rlch_fs_snapshot_open_meta "$fd")" || return 2
+    [[ "$after" == "$opened" && "$after" == "$(_rlch_fs_snapshot_meta "$anchor")" ]] || return 2
+    exec {fd}<&-
+}
+_rlch_fs_snapshot_pass() {
+    local rest="${_rfs_path#/}" part path='' fd next=0 data opened after raw components=0 missing=0
+    local -a names=() parents=() parent_data=() parent_paths=()
+    _rfs_rows=(); _rfs_bytes=0; _rfs_guards=()
+    { exec {fd}</; } 2>/dev/null || return 2
+    parents+=("$fd"); parent_paths+=(/)
+    data="$(_rlch_fs_snapshot_meta /)" || return 2
+    [[ "$data" == "$(_rlch_fs_snapshot_open_meta "$fd")" ]] || return 2
+    parent_data+=("$data")
+    if [[ "$_rfs_path" == / ]]; then
+        _rlch_fs_snapshot_walk / "/proc/self/fd/$fd/." "$data" 0 || return 2
+    else
+        while [[ -n "$rest" ]]; do
+            components=$((components+1)); (( components<=64 )) || return 2
+            part="${rest%%/*}"; if [[ "$rest" == */* ]]; then rest="${rest#*/}"; else rest=''; fi
+            path+="/$part"
+            # Inspect the mounted path before opening it (autofs is rejected).
+            local i target
+            for ((i=0;i<${#_rfs_mounts[@]};i+=10)); do
+                target="${_rfs_mounts[i+4]}"
+                [[ "$target" != "$path" || "${_rfs_mounts[i+6]}" != autofs ]] || return 2
+            done
+            if ! data="$(_rlch_fs_snapshot_meta "/proc/self/fd/$fd/$part")"; then
+                _rlch_fs_snapshot_names "/proc/self/fd/$fd" names || return 2
+                for opened in "${names[@]}"; do [[ "$opened" != "$part" ]] || return 2; done
+                opened="$(_rlch_fs_snapshot_open_meta "$fd")" || return 2
+                [[ "$opened" == "${parent_data[-1]}" ]] || return 2
+                _rlch_fs_snapshot_append "$_rfs_path" "$opened" 0 a || return 2
+                missing=1; break
+            fi
+            if [[ -z "$rest" ]]; then
+                _rlch_fs_snapshot_walk "$path" "/proc/self/fd/$fd/$part" "$data" 0 || return 2
+                break
+            fi
+            raw="${data##*|}"
+            (( (16#$raw & 0170000)==0040000 && (16#$raw & 0444)!=0 && (16#$raw & 0111)!=0 )) || return 2
+            [[ -r "/proc/self/fd/$fd/$part" && -x "/proc/self/fd/$fd/$part" ]] || return 2
+            { exec {next}<"/proc/self/fd/$fd/$part"; } 2>/dev/null || return 2
+            opened="$(_rlch_fs_snapshot_open_meta "$next")" || return 2
+            [[ "$(_rlch_fs_snapshot_guard "$data")" == "$(_rlch_fs_snapshot_guard "$opened")" ]] || return 2
+            fd="$next"; parents+=("$fd"); parent_data+=("$data"); parent_paths+=("$path")
+        done
+    fi
+    for ((next=0;next<${#parents[@]};next++)); do
+        fd="${parents[next]}"
+        after="$(_rlch_fs_snapshot_open_meta "$fd")" || return 2
+        after="$(_rlch_fs_snapshot_guard "$after")"
+        [[ "$after" == "$(_rlch_fs_snapshot_guard "${parent_data[next]}")" && "$after" == "$(_rlch_fs_snapshot_guard "$(_rlch_fs_snapshot_meta "${parent_paths[next]}")")" ]] || return 2
+        _rfs_guards+=("$after")
+        exec {fd}<&-
+    done
+    (( ${#_rfs_rows[@]}>0 && missing<=1 ))
+}
+rlch_fs_snapshot() (
+    set +x
+    export LC_ALL=C
+    ulimit -v 262144 || return 2
+    [[ $# -eq 4 && "$1" == /* && ${#1} -le 4096 && "$2" =~ ^[0-8]$ && ( "$3" == all || "$3" == local ) ]] || return 2
+    [[ "$1" == / || ( "$1" != */ && "$1" != *//* && "$1" != */./* && "$1" != */../* && "$1" != */. && "$1" != */.. ) ]] || return 2
+    unset GLOBIGNORE
+    shopt -s nullglob dotglob
+    shopt -u failglob
+    local _rfs_path="$1" _rfs_depth="$2" _rfs_policy="$3" _rfs_bytes=0
+    # shellcheck disable=SC2034 # Arrays consumed through namerefs.
+    local -a _rfs_mounts=() middle=() final=() _rfs_rows=() first=() _rfs_guards=() guards=()
+    local -A _rfs_seen_mounts=()
+    mount_inventory _rfs_mounts "$4" || return 2
+    local i target
+    for ((i=0;i<${#_rfs_mounts[@]};i+=10)); do
+        target="${_rfs_mounts[i+4]}"
+        if [[ "${_rfs_mounts[i+6]}" == autofs && ( "$target" == / || "$_rfs_path" == "$target" || "$_rfs_path" == "$target/"* || "$target" == "${_rfs_path%/}/"* ) ]]; then return 2; fi
+    done
+    _rlch_fs_snapshot_pass || return 2
+    # shellcheck disable=SC2034 # Guards compared through namerefs.
+    first=("${_rfs_rows[@]}")
+    # shellcheck disable=SC2034 # Compared through a nameref.
+    guards=("${_rfs_guards[@]}")
+    mount_inventory middle "$4" || return 2
+    rlch_fs_equal _rfs_mounts middle || return 2
+    _rlch_fs_snapshot_pass || return 2
+    rlch_fs_equal first _rfs_rows && rlch_fs_equal guards _rfs_guards || return 2
+    mount_inventory final "$4" || return 2
+    rlch_fs_equal _rfs_mounts final || return 2
+    printf '%s\0' "${first[@]}" || return 2
+) 2>/dev/null

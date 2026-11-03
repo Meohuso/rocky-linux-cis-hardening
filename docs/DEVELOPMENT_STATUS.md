@@ -4415,3 +4415,318 @@ unobservable ABA sequence is made.
 Final SHA/tree/parent/compare and exact-SHA CI identifiers are reported externally
 to avoid a second documentation commit. This exception closes with CIS 7.2.8.
 STOP after final CI; no CIS 7.2.9 work is authorized by this change.
+
+## CIS 7.2.9 — Dotfiles access (bounded development / CI coverage)
+
+Baseline: commit `298abcef321592660e4dc10c480e2dbca6e66aa8`, tree
+`458d075126af0b1ba331df310db23885c4c4432e`, CI 301 / run 40309677829 /
+attempt 1, 6198 Bats passes, no failures/skips, ShellCheck 0.9.0.
+Reference remains CIS RHEL9 v2.0.0, Level 1 Server, CAS pin
+`a4b23038aaf65a25d6e88baa2800c03d09fda577`; Rocky Linux 10.2 remains the
+future real-system qualification target. Bash only; no Ansible/new dependency.
+
+The CIS 7.2.9 mapping in `products/rhel9/controls/cis_rhel9.yml` is **partial**:
+its note identifies missing 0600-or-more-restrictive bash-history coverage.
+Explicit user decisions retain all six main rules, tailor
+`var_user_initialization_files_regex=all_dotfiles`, and add the separately
+approved pinned `file_permission_user_bash_history` rule. They do NOT add
+`accounts_users_netrc_file_permissions` (related only). Closing the identified
+history gap does not prove complete coverage of the proprietary CIS benchmark.
+
+### Mapping, applicability and effective profile selection
+
+Each XCCDF ID is exactly `xccdf_org.ssgproject.content_rule_` followed by the
+rule name below. The OVAL logical definition has that same rule name; the
+authoritative source for each is its directory's `oval/shared.xml`, rather
+than an invented generated numeric OVAL ID. The first three rules and history
+complement reside in `linux_os/guide/system/accounts/accounts-session/`;
+forward/netrc reside in `linux_os/guide/system/accounts/accounts-restrictions/`
+`password_storage/`; rsh resides in `linux_os/guide/services/obsolete/r_services/`.
+
+| Verification | RHEL9 CCE | Applicable condition | CAS L1 Server selection | User population |
+|---|---|---|---|---|
+| accounts_user_dot_group_ownership | CCE-87037-8 | system_with_kernel | selected | local text macros |
+| accounts_user_dot_user_ownership | CCE-87038-6 | system_with_kernel | selected | local text macros |
+| file_permission_user_init_files | CCE-83637-9 | no additional rule/group platform | selected | password_object macro |
+| no_forward_files | CCE-86756-4 | system_with_kernel | selected | password_object macro |
+| no_netrc_files | CCE-83617-1 | system_with_kernel | selected | none: fixed /home |
+| no_rsh_trust_files | CCE-84145-2 | package[rsh-server] | selected | none: fixed paths |
+| file_permission_user_bash_history | none declared | package[bash] | NOT selected; explicit RLCH complement | password_object macro |
+
+The profile `products/rhel9/profiles/cis_server_l1.profile` inherits selections
+through `cis_rhel9:all:l1_server`, not six literal rule entries. Pinned
+`ssg/profiles.py`, `ssg/entities/profile.py` and `ssg/controls.py` resolve
+controls/levels/refinements and explicit exclusions. Expansion of the complete
+pinned policy using its profile-selection functions confirms all six main
+rules plus all_dotfiles, but neither the history complement nor the related
+netrc-permissions rule. There is no profile `extends` here. The three explicit
+exclusions are `file_ownership_home_directories`, `group_unique_name`, and
+`file_owner_at_allow`. The first is a DIFFERENT ID from dotfile ownership and
+does not deselect `accounts_user_dot_user_ownership`. Mapping, profile
+selection, applicability and RLCH's approved complement are separate facts.
+This source-resolution evidence is not a rebuilt/qualified Rocky datastream.
+
+For RHEL9, pinned `system_with_kernel` resolves to kernel-core RPM presence;
+its absence makes only the four relevant rules NOT_APPLICABLE. rsh-server and
+bash applicability are evaluated/rechecked independently using the existing
+strict RPM inventory API. Uncertain inventory is ERROR for affected rules.
+General initialization-file permissions are not exempted by either package's
+absence. Whole-control NOT_APPLICABLE requires all seven results NA; it is
+supported defensively by aggregation, not manufactured in normal execution
+because the general-permissions rule has no additional applicability guard.
+
+### Exact OVAL collection and verdict matrix
+
+| Verification | File selection | Directory recursion / FS | SUCCESS / NON_COMPLIANT on complete supported evidence |
+|---|---|---|---|
+| group ownership | `^\..*` under captured local homes | max_depth=1, directories, local | exactly ONE numerical GID comparison true after unique of RAW captured strings / otherwise finding |
+| user ownership | `^\..*` under captured local homes | max_depth=1, directories, local | exactly ONE numerical UID comparison true across ALL UID capture instances / otherwise finding |
+| general permissions | `^\.[\w\- ]+$` under password-object homes | no directory recursion, all | no selected item's mode has a bit in 07037 / any selected violation |
+| no_forward_files | `\.forward$` under password-object homes | no directory recursion, all | no matching item / any matching item, including prefix.forward |
+| no_netrc_files | `^\.netrc$` under /home | max_depth=1, directories, all | no matching item / any matching item |
+| no_rsh_trust_files | `^\.rhosts$` under /root and /home; `^hosts\.equiv$` under /etc | /home max_depth=1 directories/all; /root and /etc no recursion | none of the three objects has a matching item / any matching item |
+| bash history complement | equals `.bash_history` under password-object homes | no directory recursion, all; symbolic-link filter excluded | no non-symlink item with any bit in 07177 / any such item |
+
+OpenSCAP 1.4.4 collection/evaluator source was examined to interpret the pinned
+OVAL: file_probe, oval_fts, fsdev, oval_cmp_basic, oval_component, oval_value,
+oval_variable and oval_resultTest. This is a semantic reference, NOT an added
+runtime dependency or a claim that this scanner release was run on Rocky 10.2.
+For a path+filename object, the filename collector excludes directory entries;
+max_depth=1 descends one directory level and can emit files at relative depth
+TWO. The API reports directories for traversal/stability, while the module
+does not turn them into filename-object items. No extra regular-file filter is
+added: FIFOs/devices/sockets can be filename items if safely observed. All leaf
+symlinks are lstatted, not followed; history excludes them, other selected
+rules retain their metadata. Directory/symlink ancestor aliases are outside
+the supported safe-path domain and produce ERROR, not silent omissions.
+
+Complete empty object sets satisfy the pinned any_exist/absence semantics;
+missing homes/directories are not automatically ERROR or NON_COMPLIANT. Safe
+absence must be proven through an existing readable/searchable pinned parent.
+Inaccessibility, failed collection, unsupported type/path or uncertainty is
+ERROR. RLCH deliberately does not emulate the file probe's suppression of
+some lstat errors. An absent target may have several absent path components,
+but a non-directory or symlink ancestor is never treated as absence.
+
+Group ownership has a critical ordering requirement. `unique` operates on
+the captured STRING values BEFORE the local variable's integer comparison.
+`42,42` yields one matching value; `42,0042` yields TWO; adding `00042`
+yields THREE. `only one` rejects the last two cases for an observed GID 42.
+The provisional module incorrectly normalized before deduplication and a
+complete fixture produced false SUCCESS. The corrected projection deduplicates
+raw spellings using prefixed string keys, then counts distinct spellings by
+numeric value. The evaluator requires count==1, not mere membership. No raw
+GID spelling is published in diagnostics. UID captures remain a multiset with
+NO new unique operation. There is no per-account file/owner pairing: exchanged
+owners/groups can satisfy the pinned OVAL, as the CAS warnings acknowledge.
+
+General forbidden bits are SUID/SGID/sticky, group write/execute and every
+other permission: 07037. Group read and owner execute can pass that rule.
+History forbids those plus owner execute and group read: 07177. Thus 0600,
+0400,0200,0000 can pass history; 0640,0700,0660,0601 and each special bit fail
+when applicable and collected. A directory named .bash_history is excluded by
+filename collection, not by an invented regular-file policy. A symlink can
+pass the complementary filter while failing general permissions separately.
+
+`all_dotfiles` is a variable option, not a seventh main mapping rule. Its exact
+pattern includes .profile/.bashrc/.bash_history and simple dot names, spaces,
+hyphens/underscores; it does NOT select all conceivable hidden names (.a.b,
+for example). Ownership's broader `^\..*` selects those names separately.
+`.netrc` is prohibited by the fixed-path rule when applicable, not automatically
+accepted based on its mode; the related permissions rule remains excluded.
+
+OCIL is reviewed but not substituted for OVAL. Ownership OCIL describes checking
+each user's intended owner/group, unlike OVAL's collections. General OCIL uses
+find /home and broad write checks, unlike its precise object and state. Forward
+and netrc OCIL use find /home -xdev, unlike their respective identity/fixed
+objects and all-filesystem options. Rsh OCIL describes /etc/hosts.equiv and
+per-home .rhosts; its automated package applicability and fixed paths remain.
+History OCIL uses regular files under /home and permission 0177, unlike the
+actual identity macro, special-bit state and symlink exclusion. These are
+documented differences, not authority to silently replace the automation.
+
+### Identity domains, NSS and regex equivalence
+
+Use unchanged `rlch_identity_home_rows` and `rlch_identity_gid_fields PATH
+passwd`, in matching source order bracketed by `rlch_identity_stamp`. Exact
+source-byte counts, framing, single-link/descriptor/metadata checks and strict
+4-MiB/65536-row/16384-byte-line limits are retained. No credential/GECOS/member
+data leaves those readers. All existing identity APIs/tests are unchanged.
+
+Local text macros initially select non-ignored names with UID spelling of at
+least four ASCII digits, exclude nobody/nfsnobody and the four false/nologin
+PREFIXES, then embed each distinct selected name UNESCAPED into UID/GID/home
+capture patterns. Names are in the existing bounded `[A-Za-z0-9_.-]{1,128}`
+ASCII domain: dots faithfully match one ASCII character; all other accepted
+characters are literal outside classes. Seven fixed fields prevent dots from
+consuming separators; no accepted name can inject another capture, lookaround,
+backreference, quantifier, alternation, class, anchor, escape or callout. Every
+matching instance is retained. Unsupported names/records produce ERROR for
+dependent rules, including initially unselected records; no account is dropped.
+UID/GID supported values are unsigned ASCII decimal spellings of 1..32 bytes,
+numerical range 0..4294967294, with leading zeros retained where required.
+Signs, hex, floating point, overlong/out-of-range or nondecimal values fail.
+
+Password-object macros instead enumerate getpwent() on the normal online
+scanner, select NUMERIC UID>=1000 (pinned product-property uid_min), exclude
+nobody/nfsnobody, and exclude the four false/nologin shells by EXACT equality.
+They do not share the text macro's lexical threshold or shell-prefix rule.
+Empty selected homes are outside RLCH's password-object domain, yielding ERROR
+for those rules; local captures can legitimately omit an empty home.
+
+For these three password-object rules only, unchanged
+`rlch_identity_uid_values PASSWD NSS` must prove one complete canonical source
+declaration exactly `passwd: files` (optional comment), not a substring grep.
+It rejects duplicate/malformed passwd declarations, external/mixed/conditional
+or unknown services; complete source/FD/size/link/stability validation applies.
+Both sources and the full projections are reread across the entire check.
+Ambiguous/unreadable/symlink configuration is ERROR. LD_PRELOAD/LD_LIBRARY_PATH
+and NSS-wrapper overrides are rejected. This equivalence is limited to the
+standard trusted glibc/files runtime, not a hostile/reconfigured loaded NSS
+implementation or proof against unobservable runtime tampering. No external
+getent/NSS population is enumerated or silently ignored. Authselect symlink
+configurations, for example, require further qualification and currently ERROR.
+NSS failure does not gate the fixed-path rules or alter local text ownership.
+
+Only printable ASCII/control-free filenames are in the module's demonstrated
+PCRE matching domain. Unicode, invalid UTF8, tabs/newlines/control names return
+ERROR rather than being skipped or approximated. The filesystem API itself
+retains arbitrary byte names using NUL fields. PCRE UTF without UCP/multiline
+and default dollar semantics are only claimed equivalent WITHIN this explicit
+filename domain. No dynamic PCRE engine, eval, callout or new dependency runs.
+Local selection work is bounded to 262144 pattern/row pairs, 65536 captures,
+64 distinct homes per population. Exceeded bounds are ERROR, never truncation.
+
+### Additive filesystem observation and execution contract
+
+New public API: `rlch_fs_snapshot PATH CHILD_DEPTH all|local MOUNTINFO`.
+Controlled INTERNAL stdout has twelve NUL fields per row: path, type, device,
+inode, link count, UID, GID, mode, size, mtime, ctime, relative child depth.
+Types f/d/l/b/c/p/s are preserved; type a denotes reliable absence, with the
+existing ancestor's evidence. Return 0 means complete stable observation, 2
+means discard all output. Output-device failure is not transactional. No
+partial projection is published before collection/validation; callers still
+must check return status. Public module diagnostics contain fixed rule labels
+and statuses only, never paths/names/UIDs/GIDs/shells/raw metadata or passwords.
+
+The new API pins directory FDs, compares lstat and opened-FD identities before
+listing, checks relevant existing-ancestor identity/owner/mode guards, retains
+full target/directory/absence-parent stamps, and compares two entire passes.
+Independent Bash glob and bounded GNU find censuses must agree exactly. This
+rejects repeated zero-exit truncation at complete NUL boundaries, missing final
+NUL, producer errors/stderr, duplicate/forged/missing entries and output bounds.
+Only the requested bounded levels are enumerated, without reading file bodies
+or following leaf links. Mount inventories bracket both passes. Applicable
+module observations are independently repeated across the whole evaluation,
+including snapshots shared by multiple rules, and affected errors take priority.
+
+API bounds: child depth 0..8, 16384 records, 4096-byte paths, 8-MiB projection,
+64 path components, 64 encountered mount IDs, 256-MiB virtual-memory ceiling;
+existing inventory bounds remain 4096 mounts / 4 MiB. `all` permits safely
+observed mounted filesystems except autofs. `local` accepts proven-local
+ext2/ext3/ext4/xfs/btrfs/tmpfs/overlay/ramfs for existing observed objects;
+other/unknown types return ERROR instead of an incomplete successful walk.
+This conservative supported-FS domain does not claim that remote filesystems
+are local or globally reproduce fsdev classification. Module limits add 256
+distinct snapshots and 32-MiB retained evidence / 131072 total rows. Exceeded
+memory/count/length/depth/mount/output bounds fail closed.
+
+No atomic snapshot, unobservable ABA protection, O_NOFOLLOW/O_NONBLOCK path
+transaction or wall-clock I/O deadline is claimed. Opening a substituted
+ancestor can block or be rejected; unexpected FDs are never enumerated before
+identity validation. Kernel/runtime trust and /proc/GNU formats are required.
+Reads may update atime; no explicit filesystem/account/ACL/SELinux mutation is
+performed. ACL/SELinux effective access is not inferred from POSIX mode alone.
+
+Seven independent statuses are aggregated ERROR before NON_COMPLIANT before
+SUCCESS; NA applies only to its own rule. check/validate start fresh, with no
+cross-invocation cache. apply is observation-only (0/3 or ERROR with manual
+guidance, never CHANGED), rollback a silent idempotent no-op. No chmod/chown/
+chgrp, account administration, creation, deletion, movement, ACL/context change,
+untrusted script execution or content read is implemented.
+
+### Verification and qualification
+
+The 83 preserved provisional module tests are extended by twelve GID regression
+tests (95 total); 41 additive API tests extend 45 historical filesystem tests
+(86 total). Baseline 6198 plus 136 new cases gives an expected full plan
+`1..6334`. Historical filesystem library/test prefixes remain byte-identical;
+no identity library/test or previous control/workflow/AGENTS file is modified.
+The complete seven-row requested GID matrix checks the exact number of numeric
+matches AND verdict, including the actual previously observed false SUCCESS
+fixture. UID multiplicity remains independently tested, with privacy checks.
+
+A validation-only existing PCRE2 library experiment uses the ORIGINAL pinned
+dynamic patterns: 84 names produce 399 UID and 399 raw GID captures with exact
+module projections, including unique text before numeric counting. Separate
+selection/duplicate fixtures also agree. 595 filename fixtures exercise 2975
+fixed-pattern comparisons, with exact accepted-domain results and ERROR outside.
+Both masks are independently reconstructed from every OVAL state bit. These
+tests support the explicit grammar proof, not global PCRE/scanner equivalence.
+Python/PCRE validation helpers are outside the repository and are not runtime
+or CI dependencies. Non-root owner/group policy fixtures substitute only
+returned IDs AFTER complete actual filesystem observations, not raw reads.
+
+Final local validation was completed on 2026-11-03 without changing the five
+implementation/test files after their validated SHA-256 checkpoint. The exact
+original manifest contains 252 Bats files distributed across eight sequential
+lots, executed by eight concurrent Bats processes. The full instrumented run
+selected 6334 tests: 6332 passed, zero failed, and two historical tests skipped.
+All eight processes returned 0 and every test name/order matched the manifest.
+The 95 CIS 7.2.9 cases and 41 additive filesystem cases all passed without skip;
+the remaining 6198 historical cases contributed 6196 passes and the two skips.
+An independently authorized full run on 2026-11-02 had the same counts.
+
+The two local skips are `6212 unexpected socket object ERROR without opening`
+and `62212 helper direct socket rejected without opening`: this container
+denies creation of their Unix socket fixtures. They are NOT recorded as executed
+successes. Exact-SHA GitHub Actions must demonstrate both cases executed without
+skip before definitive validation; persistent CI skips require user arbitration.
+No test was excluded, modified, or given a new skip to obtain these results.
+
+The initial full-suite failure of `7111 compliant files check validate apply
+unchanged` (lot 1, test 550) remains UNEXPLAINED. No CIS 7.1.11, mount library,
+historical-test or workflow correction was made. Isolated/contextual replays
+and both complete instrumented runs did not reproduce it. On 2026-11-03 the
+test passed in 232 ms according to Bats, with check/validate/apply returning 0
+and identical before/after snapshots. Native begin/end events and host-PID
+observations demonstrated lots 2, 4 and 8 still active during this test; the
+2026-11-02 complete run also demonstrated overlap. This is positive regression
+evidence, NOT a diagnosis, a claim that the historical failure is fixed, or
+proof that an intermittent/environment-dependent failure is impossible.
+
+The external monitor started before the Bats workers and used verified
+namespace-to-host PID mappings. Commands, per-lot TAP, per-test outputs, native
+timing events, relevant fixtures and resource observations were retained outside
+the repository. Periodic memory/process observations are sampled maxima, not
+guaranteed instantaneous peaks; CPU termination accounting and post-worker
+counters are retained separately. I/O pressure interfaces were unavailable.
+Diagnostic formatting/output retention/monitoring can change timings, and the
+original failing campaign's exact environment/load/timeline was not preserved.
+
+ShellCheck 0.9.0 passed all 42 existing workflow-scope files plus the new module,
+metadata and two Bats files (46 checks). Bats static-analysis copies load the
+actual Bats run/status provider while preserving original file-level directives;
+no warning exclusions or repository changes were added for that context. The
+workflow remains unchanged and does not itself lint module paths. The five
+implementation/test hashes and all 865 tracked files were unchanged throughout
+the successful campaign; only this status documentation is finalized afterward.
+
+Exact final SHA/tree/parent/compare and GitHub CI run/attempt/job evidence are
+reported externally to preserve one final commit. Publication requires the
+unchanged checkpoint as parent and green CI on that exact final SHA. A green
+CI does not remove the historical failure reserve, the partial CAS mapping or
+the real-system qualification requirements below. Definitive CIS 7.2.9 approval
+remains subject to explicit user arbitration after the publication report.
+
+Real qualification remains: Rocky Linux 10.2, explicit OpenSCAP selection of
+all seven approved rules (the profile alone omits the complement), loaded NSS
+configuration/external identity sources, ACL/SELinux, remote/bind/embedded
+mounts and real owner changes, performance/large populations, reboot/post-reboot
+idempotence and golden image. Residual gaps include CAS's partial mapping,
+collection/OCIL differences, collection-level ownership rather than per-account
+pairing, excluded names/unsupported domains and application-specific access
+semantics. No complete CIS compliance or global OpenSCAP equivalence is claimed.
+
+This six-file exception is exclusive to CIS 7.2.9 and closes after its final CI.
+STOP then; no CIS 7.2.10 work is authorized by this change.
