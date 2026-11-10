@@ -1,0 +1,37 @@
+name: Diagnostic identity CI302
+
+on:
+  push:
+    branches:
+      - diagnostic/cis-7.2.9-identity-ci302
+
+permissions:
+  contents: read
+
+jobs:
+  identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends bats
+      - name: Record runner and measure selected fixtures
+        shell: bash
+        run: |
+          printf 'run=%s attempt=%s sha=%s ref=%s image=%s image_version=%s\n' \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$GITHUB_REF" \
+            "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
+          cat /etc/os-release
+          bash --version
+          bats --version
+          readlink -f /usr/bin/awk
+          dpkg-query -W bats bash mawk coreutils
+          head --version
+          locale
+          printf 'uid=%s gid=%s umask=%s\n' "$(id -u)" "$(id -g)" "$(umask)"
+          bash diagnostics/identity_ci302.sh
