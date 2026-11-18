@@ -18,6 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 3
 
       - name: Verify source and scope
         shell: bash
@@ -28,16 +29,29 @@ jobs:
           def git(*args):
               return subprocess.check_output(["git", *args], text=True).strip()
           base = "4ff304239317056a3cea01d9170fc58f0a4c6ffe"
-          expected = {".github/workflows/experiment-identity-pipe.yml",
-                      "lib/identity_observation.sh", "diagnostics/identity_ci302.sh",
-                      "tests/identity_observation.bats"}
-          assert git("rev-parse", "HEAD") == os.environ["GITHUB_SHA"]
-          assert git("show", "-s", "--format=%P", "HEAD") == base
+          experiment = "0fc7198bff51c57d0ceb8b2c365e89990384f5b8"
+          workflow = ".github/workflows/experiment-identity-pipe.yml"
+          functional = {"lib/identity_observation.sh", "diagnostics/identity_ci302.sh",
+                        "tests/identity_observation.bats"}
+          expected = functional | {workflow}
+          head = git("rev-parse", "HEAD")
+          assert head == os.environ["GITHUB_SHA"]
+          parent = git("show", "-s", "--format=%P", head).split()
+          assert parent == [experiment]
+          assert git("show", "-s", "--format=%P", experiment).split() == [base]
+          assert git("rev-parse", experiment + "^{tree}") == "7013e3778e16429e19a1585da63441ff8592ac90"
           assert os.environ["GITHUB_REF"] == "refs/heads/experiment/cis-7.2.9-identity-pipe"
-          assert set(git("diff", "--name-only", base, "HEAD").splitlines()) == expected
+          prototype_paths = set(git("diff", "--name-only", base, experiment).splitlines())
+          correction_paths = set(git("diff", "--name-only", experiment, head).splitlines())
+          assert prototype_paths == expected
+          assert correction_paths == {workflow}
+          for path in sorted(functional):
+              assert git("rev-parse", experiment + ":" + path) == git("rev-parse", head + ":" + path)
           assert not git("status", "--porcelain")
-          result = {"sha": git("rev-parse", "HEAD"), "parent": base,
-                    "tree": git("rev-parse", "HEAD^{tree}"), "paths": sorted(expected)}
+          result = {"sha": head, "parent": parent[0], "experiment": experiment, "base": base,
+                    "tree": git("rev-parse", "HEAD^{tree}"), "branch": os.environ["GITHUB_REF"],
+                    "prototype_paths": sorted(prototype_paths), "correction_paths": sorted(correction_paths),
+                    "functional_blobs_unchanged": True}
           pathlib.Path(os.environ["RUNNER_TEMP"], "identity-qualification/source.json").write_text(
               json.dumps(result, indent=2))
           print(json.dumps(result))
