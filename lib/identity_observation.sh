@@ -209,14 +209,17 @@ _rlch_identity_rows() (
     if [[ "$strict" -eq 1 ]]; then
         links="$(/usr/bin/stat -c '%h' -- "$file" 2>/dev/null)" || return 2
         [[ "$links" == 1 ]] || return 2
-        expected="${before#*|}"; expected="${expected#*|}"; expected="${expected#*|}"
-        expected="${expected#*|}"; expected="${expected#*|}"; expected="${expected%%|*}"
-        [[ "$expected" =~ ^[0-9]+$ && ${#expected} -le 7 ]] || return 2
-        (( expected > 0 && expected <= 4194286 )) || return 2
     fi
     { exec {fd}<"$file"; } 2>/dev/null || return 2
     opened="$(LC_ALL=C /usr/bin/stat -Lc '%u|%g|%a|%d|%i|%s|%y|%z' -- "/proc/self/fd/$fd" 2>/dev/null)" || return 2
     [[ "$before" == "$opened" ]] || return 2
+    # Independent size reference: metadata from the verified open descriptor,
+    # not the producer output or its synthetic end marker. Empty sources have
+    # no valid historical projection; the marker occupies the final 18 bytes.
+    expected="${opened#*|}"; expected="${expected#*|}"; expected="${expected#*|}"
+    expected="${expected#*|}"; expected="${expected#*|}"; expected="${expected%%|*}"
+    [[ "$expected" =~ ^[0-9]+$ && ${#expected} -le 7 ]] || return 2
+    (( expected > 0 && expected <= 4194286 )) || return 2
     if [[ "$strict" -eq 1 ]]; then
         [[ "$(/usr/bin/stat -Lc '%h' -- "/proc/self/fd/$fd" 2>/dev/null)" == 1 ]] || return 2
     fi
@@ -227,7 +230,8 @@ _rlch_identity_rows() (
         printf 'RLCH-IDENTITY-END\n'
       } |
       /usr/bin/head -c 4194305 | LC_ALL=C /usr/bin/awk -v kind="$kind" -v expected="$expected" -v strict="$strict" '
-      function invalid() {bad=1;exit 2}
+      # Reject without closing the parser input early. Every rejection
+      # below latches bad and skips the row; only head-bounded data is drained.
       function uint(s) {return s ~ /^[0-9]+$/ && length(s)<=10 && s+0<=4294967294}
       # Additive text capture modes validate UTF-8, matching the text probe
       # encoding domain without normalizing captured code points or bytes.
@@ -261,19 +265,20 @@ _rlch_identity_rows() (
         bound=(flag ? "18446744073709551615" : (negative ? "9223372036854775808" : "9223372036854775807"))
         return length(s)<length(bound) || (length(s)==length(bound) && "x"s<="x"bound)
       }
+      bad {next}
       {bytes+=length($0)+1
-       if(bytes>4194304 || NR>65537 || length($0)>16384 || ended || index($0,sprintf("%c",0))) invalid()
+       if(bytes>4194304 || NR>65537 || length($0)>16384 || ended || index($0,sprintf("%c",0))) {bad=1;next}
        if($0=="RLCH-IDENTITY-END") {ended=1;next}
        clean=$0;if(kind=="nss" || kind=="uid_sources") gsub(/\t/,"",clean)
-       if(clean ~ /[[:cntrl:]]/) invalid()
+       if(clean ~ /[[:cntrl:]]/) {bad=1;next}
        if(kind=="uid_sources") {
          if($0 ~ /^[[:space:]]*(#|$)/) next
          line=$0;sub(/^[[:space:]]*/,"",line)
          if(line ~ /^passwd([[:space:]:]|$)/) {
-           if(line !~ /^passwd:/ || seen["passwd"]++) invalid()
+           if(line !~ /^passwd:/ || seen["passwd"]++) {bad=1;next}
            sub(/^passwd:[[:space:]]*/,"",line);sub(/#.*/,"",line)
            sub(/[[:space:]]*$/,"",line)
-           if(line=="") invalid()
+           if(line=="") {bad=1;next}
            out[++n]=(line=="files" ? "SOURCE|FILES" : "SOURCE|OTHER")
          }
          next
@@ -284,15 +289,15 @@ _rlch_identity_rows() (
          line=$0;sub(/^[[:space:]]*/,"",line)
          if(line ~ /^(passwd|group)[[:space:]]*:/) {
            key=line;sub(/[[:space:]]*:.*/,"",key)
-           if(line !~ /^(passwd|group):[[:space:]]+[^[:space:]]/ || seen[key]++) invalid()
+           if(line !~ /^(passwd|group):[[:space:]]+[^[:space:]]/ || seen[key]++) {bad=1;next}
            sub(/^[^:]+:[[:space:]]+/,"",line)
-           if(line ~ /\|/ || length(line)>2048) invalid()
+           if(line ~ /\|/ || length(line)>2048) {bad=1;next}
            out[++n]=key "|" line
          }
          next
        }
        if(kind=="group_name_counts") {
-         if(!name_utf8($0)) invalid()
+         if(!name_utf8($0)) {bad=1;next}
          n++
          # No POSIX submatch ambiguity: rightmost eligible literal colon.
          # Byte offsets are safe here: ASCII colon cannot occur in a UTF-8
@@ -307,12 +312,12 @@ _rlch_identity_rows() (
        count=split($0,f,":")
        if(kind=="home_rows") {
          if(count!=7 || $0 ~ /[^ -~]/ || index($0,"|") || f[1] !~ /^[A-Za-z0-9_.-]+$/ || length(f[1])>128 ||
-            f[3] !~ /^[0-9]+$/ || length(f[3])>32 || uid_decimal(f[3])=="INVALID" || length(f[6])>4096) invalid()
+            f[3] !~ /^[0-9]+$/ || length(f[3])>32 || uid_decimal(f[3])=="INVALID" || length(f[6])>4096) {bad=1;next}
          out[++n]="ROW|" f[1] "|" f[3] "|" f[6] "|" f[7]
          next
        }
        if(kind=="user_names") {
-         if(count!=7 || !name_utf8($0)) invalid()
+         if(count!=7 || !name_utf8($0)) {bad=1;next}
          out[++n]=(length(f[1]) ? "NAME|" f[1] : "SKIP")
          next
        }
@@ -322,14 +327,14 @@ _rlch_identity_rows() (
          line=$0;sub(/^[[:space:]]*/,"",line)
          if(line ~ /^(#|$)/) next
          count=split(line,f,":")
-         if(count!=7 || f[1]=="" || f[1] ~ /^[+-]/ || seen[f[1]]++) invalid()
+         if(count!=7 || f[1]=="" || f[1] ~ /^[+-]/ || seen[f[1]]++) {bad=1;next}
          uid=uid_decimal(f[3]);gid=uid_decimal(f[4])
-         if(uid=="INVALID" || gid=="INVALID") invalid()
+         if(uid=="INVALID" || gid=="INVALID") {bad=1;next}
          out[++n]="UID|" uid
          next
        }
        if(kind=="gid_passwd" || kind=="gid_group") {
-         if((kind=="gid_passwd" && count!=7) || (kind=="gid_group" && count!=4)) invalid()
+         if((kind=="gid_passwd" && count!=7) || (kind=="gid_group" && count!=4)) {bad=1;next}
          name_present=(length(f[1]) ? "PRESENT" : "EMPTY")
          field2_present=(length(f[2]) ? "PRESENT" : "EMPTY")
          uid_kind=(kind=="gid_group" ? "NA" : (f[3] ~ /^[0-9]+$/ ? "DECIMAL" : "OTHER"))
@@ -338,21 +343,21 @@ _rlch_identity_rows() (
          next
        }
        if(kind=="shadow_presence") {
-         if(count!=9 || f[1]=="" || f[1] ~ /^[+-]/ || seen[f[1]]++) invalid()
+         if(count!=9 || f[1]=="" || f[1] ~ /^[+-]/ || seen[f[1]]++) {bad=1;next}
          # Structural parsing, not an age policy: optional decimal signed-long
          # fields; do not impose the older account helper UID/day limits here.
-         for(j=3;j<=8;j++) if(!shadow_number(f[j],0)) invalid()
-         if(!shadow_number(f[9],1)) invalid()
+         for(j=3;j<=8;j++) if(!shadow_number(f[j],0)) {bad=1;next}
+         if(!shadow_number(f[9],1)) {bad=1;next}
          out[++n]=(length(f[2])==0 ? "EMPTY" : "NONEMPTY")
          next
        }
        if(((kind=="passwd" || kind=="password_markers") && count!=7) || (kind=="group" && count!=4) ||
-          f[1]=="" || f[1] ~ /^[+-]/ || seen[f[1]]++ || !uint(f[3])) invalid()
-       if((kind=="passwd" || kind=="password_markers") && !uint(f[4])) invalid()
+          f[1]=="" || f[1] ~ /^[+-]/ || seen[f[1]]++ || !uint(f[3])) {bad=1;next}
+       if((kind=="passwd" || kind=="password_markers") && !uint(f[4])) {bad=1;next}
        if(kind=="password_markers") out[++n]=(f[2]=="x" ? "X" : (f[2]=="*" ? "STAR" : "OTHER"))
        else out[++n]=sprintf("%.0f",f[3]+0)
       }
-      END {if(bad || !ended || !n || (strict && bytes-18!=expected) || (kind=="nss" && (!seen["passwd"] || !seen["group"]))) exit 2
+      END {if(bad || !ended || !n || bytes-18!=expected || (kind=="nss" && (!seen["passwd"] || !seen["group"]))) exit 2
            if(kind=="group_name_counts") printf "COUNTS|%d|%d\n",selected,distinct
            else for(i=1;i<=n;i++) print out[i]}'
     )" || return 2

@@ -494,9 +494,17 @@ gid_error() { run rlch_identity_gid_fields "$1" "$2"; [ "$status" -eq 2 ]; [ -z 
     rlch_identity_stream() { /usr/bin/head -n 1; }
     gid_error "$P" passwd; gid_error "$G" group
 }
-@test "idobs GID strengthened byte check does not silently change old UID projection" {
+@test "idobs GID strengthened byte check rejects truncated historical UID projection" {
+    bats_require_minimum_version 1.5.0
+    local source_bytes first_line_bytes
+    source_bytes=$(/usr/bin/stat -c %s -- "$P")
+    first_line_bytes=$(/usr/bin/head -n 1 "$P" | /usr/bin/wc -c)
+    [ "$first_line_bytes" -gt 0 ]; [ "$first_line_bytes" -lt "$source_bytes" ]
     rlch_identity_stream() { /usr/bin/head -n 1; }
-    run rlch_identity_rows "$P" passwd; [ "$status" -eq 0 ]; [ "$output" = 0 ]
+    run rlch_identity_rows "$P" passwd
+    [ "$status" -eq 2 ]; [ -z "$output" ]
+    run --keep-empty-lines --separate-stderr rlch_identity_rows "$P" passwd
+    [ "$status" -eq 2 ]; [ -z "$output" ]; [ -z "$stderr" ]
     gid_error "$P" passwd
 }
 @test "idobs GID mid-row zero-byte and appended-record truncation rejected" {

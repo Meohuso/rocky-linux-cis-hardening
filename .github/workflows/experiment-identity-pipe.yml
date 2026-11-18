@@ -1,0 +1,301 @@
+name: Experiment identity bounded stream
+
+on:
+  push:
+    branches:
+      - experiment/cis-7.2.9-identity-pipe
+
+permissions:
+  contents: read
+
+jobs:
+  qualification:
+    name: Targeted identity qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out experiment
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify source and scope
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/identity-qualification" "$RUNNER_TEMP/identity-private"
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+          base = "4ff304239317056a3cea01d9170fc58f0a4c6ffe"
+          expected = {".github/workflows/experiment-identity-pipe.yml",
+                      "lib/identity_observation.sh", "diagnostics/identity_ci302.sh",
+                      "tests/identity_observation.bats"}
+          assert git("rev-parse", "HEAD") == os.environ["GITHUB_SHA"]
+          assert git("show", "-s", "--format=%P", "HEAD") == base
+          assert os.environ["GITHUB_REF"] == "refs/heads/experiment/cis-7.2.9-identity-pipe"
+          assert set(git("diff", "--name-only", base, "HEAD").splitlines()) == expected
+          assert not git("status", "--porcelain")
+          result = {"sha": git("rev-parse", "HEAD"), "parent": base,
+                    "tree": git("rev-parse", "HEAD^{tree}"), "paths": sorted(expected)}
+          pathlib.Path(os.environ["RUNNER_TEMP"], "identity-qualification/source.json").write_text(
+              json.dumps(result, indent=2))
+          print(json.dumps(result))
+          PY
+
+      - name: Install Bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends bats
+
+      - name: Record actual environment
+        shell: bash
+        run: |
+          {
+            printf 'run=%s attempt=%s sha=%s ref=%s image=%s image_version=%s\n' \
+              "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$GITHUB_REF" \
+              "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
+            cat /etc/os-release
+            bash --version
+            bats --version
+            readlink -f /usr/bin/head
+            /usr/bin/head --version
+            readlink -f /usr/bin/awk
+            if /usr/bin/awk --version; then :; else /usr/bin/awk -W version; fi
+            dpkg-query -W | /usr/bin/awk '$1 ~ /^(bash|bats|coreutils|mawk|gawk|rust-coreutils)$/ {print}'
+            locale
+            printf 'uid=%s gid=%s umask=%s\n' "$(id -u)" "$(id -g)" "$(umask)"
+            while read -r key value _; do
+              if [[ "$key" == SigIgn: ]]; then
+                printf 'startup_sigign=%s sigpipe_ignored=%s\n' "$value" "$(( (16#$value >> 12) & 1 ))"
+              fi
+            done < /proc/self/status
+          } | tee "$RUNNER_TEMP/identity-qualification/environment.log"
+
+      - name: Prepare result verifier
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/identity-result-check.py" <<'PY'
+          import ast, collections, json, os, pathlib, re, sys
+          REFERENCES = {"passwd.complete":"e169bdf59fac30d230f7d21be511d04dc8cc61e5edb1d8255758bc220ba3d4c7","passwd.single":"9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa","passwd.records-65536":"bac6f4d80bf2772947c877447636c2cda523ec1ed9987ac455fa68a6b94306c5","passwd.line-16384":"53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3","passwd.bytes-max":"41ea07541aac87524737b5c3c09ca137cd1d84c3483f0cb24da4656b157c9b40","group.complete":"e169bdf59fac30d230f7d21be511d04dc8cc61e5edb1d8255758bc220ba3d4c7","group.single":"9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa","group.records-65536":"bac6f4d80bf2772947c877447636c2cda523ec1ed9987ac455fa68a6b94306c5","group.line-16384":"53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3","group.bytes-max":"41ea07541aac87524737b5c3c09ca137cd1d84c3483f0cb24da4656b157c9b40","nss.complete":"9ff931bbf115e21890972f9a6163edb92b843a317bace7734cdd5386cec8650b","nss.records-65536":"9ff931bbf115e21890972f9a6163edb92b843a317bace7734cdd5386cec8650b","nss.line-16384":"9ff931bbf115e21890972f9a6163edb92b843a317bace7734cdd5386cec8650b","nss.bytes-max":"9ff931bbf115e21890972f9a6163edb92b843a317bace7734cdd5386cec8650b"}
+          CASES = """complete empty single middle-truncation complete-row-truncation
+          before-last zero-output producer-error producer-stderr missing-marker false-marker
+          mutation-during mutation-before-open size-change source-replacement same-size-mutation
+          records-65536 records-65537 line-16384 line-16385 bytes-max bytes-over early-large
+          invalid-secret""".split()
+          def check(condition, label):
+              if not condition:
+                  raise RuntimeError(label)
+          kind, raw_path, output_path, selector, rc = sys.argv[1:]
+          rc = int(rc)
+          raw = pathlib.Path(raw_path).read_text(errors="replace")
+          report = {"kind": kind, "selector": selector, "process_exit": rc, "ok": False}
+          try:
+              if kind == "tap":
+                  names = re.findall(r'^@test\s+"([^"]+)"',
+                                     pathlib.Path(selector).read_text(), re.M)
+                  expected_count = {"tests/identity_observation.bats": 300,
+                                    "tests/cis_7_2_9.bats": 95,
+                                    "tests/filesystem_observation.bats": 86}[selector]
+                  check(len(names) == expected_count, "source selection count")
+                  rows = []
+                  for match in re.finditer(r'^(ok|not ok) ([0-9]+) (.*)$', raw, re.M):
+                      status, ordinal, name = match.groups()
+                      skip = bool(re.search(r'\s+#\s*skip\b', name, re.I))
+                      name = re.sub(r'\s+#\s*skip\b.*$', '', name, flags=re.I)
+                      if name in names:
+                          rows.append({"status": status, "number": int(ordinal),
+                                       "name": name, "skip": skip})
+                  report.update(selected=len(names), observed=len(rows),
+                                passed=sum(x["status"] == "ok" and not x["skip"] for x in rows),
+                                failed=sum(x["status"] == "not ok" for x in rows),
+                                skipped=sum(x["skip"] for x in rows), tests=rows)
+                  check([x["name"] for x in rows] == names, "TAP names/order/completeness")
+                  check([x["number"] for x in rows] == list(range(1, len(names)+1)),
+                        "TAP ordinal completeness")
+                  check(re.findall(r'^1\.\.[0-9]+$', raw, re.M) == [f"1..{len(names)}"],
+                        "TAP plan")
+                  check(rc == 0 and report["failed"] == 0 and report["skipped"] == 0,
+                        "TAP failure/skip/process exit")
+              elif kind == "matrix":
+                  ignored = {"default": 0, "ignore": 1}[selector]
+                  harness = pathlib.Path("diagnostics/identity_ci302.sh").read_text()
+                  literal = re.search(r'names = (\[.*?\])', harness, re.S).group(1)
+                  selected_names = ["idobs " + x for x in ast.literal_eval(literal)]
+                  legacy_names = [x for x in re.findall(r'^@test\s+"([^"]+)"',
+                                                       pathlib.Path("tests/identity_observation.bats").read_text(), re.M)
+                                  if x in selected_names]
+                  check(len(legacy_names) == 20, "legacy selection count")
+                  phases = re.findall(r'^phase=(original|measured) bats_exit=([0-9]+) selected=([0-9]+)$',
+                                      raw, re.M)
+                  check(phases == [("original","0","20"),("measured","0","20")],
+                        "legacy process status/count")
+                  legacy_results = {}
+                  for phase in ("original", "measured"):
+                      found = re.findall(rf'^{phase}\|(ok|not ok)\|(.*)$', raw, re.M)
+                      check([name for status,name in found] == legacy_names, "legacy coverage")
+                      check(all(status == "ok" for status,name in found), "legacy assertion")
+                      legacy_results[phase] = len(found)
+                  legacy_metrics = []
+                  counts = collections.Counter()
+                  for line in raw.splitlines():
+                      if not line.startswith("CI302|"):
+                          continue
+                      f = line.split("|")
+                      check(len(f) == 16 and f[1] in legacy_names, "legacy metric framing")
+                      check(all(re.fullmatch(r"[0-9]+", f[i]) for i in
+                                (2,3,4,5,6,8,9,11,12,13)), "legacy metric numeric shape")
+                      check(int(f[3]) == ignored, "legacy SIGPIPE disposition")
+                      expected = int(f[2])
+                      check(expected in (0,2), "legacy expected status")
+                      check(all(int(f[i]) == expected for i in (4,8,11)), "legacy API status")
+                      check(int(f[6]) == int(f[13]) == 0, "legacy stderr bytes")
+                      if expected == 2:
+                          check(all(int(f[i]) == 0 for i in (5,9,12)), "legacy partial projection")
+                          check(f[7] == f[10] == f[14] == "empty" and f[15] == "expected",
+                                "legacy diagnostic output")
+                      else:
+                          check([int(f[i]) for i in (5,9,12)] == [7,6,6],
+                                "legacy valid projection sizes")
+                          check(f[15] == "valid_witness", "legacy valid witness")
+                      counts[f[1]] += 1
+                      legacy_metrics.append(f[1:])
+                  expected_counts = {name: 1 for name in legacy_names}
+                  expected_counts.update({"idobs duplicate names conservative error": 2,
+                                          "idobs UID bounds and syntax": 4,
+                                          "idobs GID bounds and syntax": 4})
+                  check(counts == collections.Counter(expected_counts), "legacy measurement coverage")
+                  matrix = []
+                  for line in raw.splitlines():
+                      if not line.startswith("BYTE302|"):
+                          continue
+                      f = line.split("|")
+                      check(len(f) == 21 and f[1] in ("passwd","group","nss") and f[2] in CASES,
+                            "matrix framing")
+                      check(all(re.fullmatch(r"[0-9]+", f[i]) for i in range(3,15)),
+                            "matrix numeric shape")
+                      check(re.fullmatch(r"[a-f0-9]{64}",f[18]) is not None,
+                            "matrix projection digest")
+                      expected = 0 if f[1]+"."+f[2] in REFERENCES else 2
+                      check(int(f[3]) == expected and int(f[5]) == ignored,
+                            "matrix expected status/disposition")
+                      check(all(int(f[i]) == expected for i in (6,9,11)), "matrix API status")
+                      check(int(f[8]) == int(f[13]) == 0, "matrix stderr bytes")
+                      if expected == 2:
+                          check(all(int(f[i]) == 0 for i in (7,10,12)), "matrix partial projection")
+                      else:
+                          check(f[18] == REFERENCES[f[1]+"."+f[2]], "published projection reference")
+                      if f[2] == "producer-error":
+                          check(f[17] == "99", "producer error actually exercised")
+                      matrix.append({"mode":f[1],"case":f[2],"expected":expected,"source_bytes":int(f[4]),
+                                     "sigpipe_ignored":int(f[5]),"api_status":int(f[6]),
+                                     "stdout_bytes":int(f[7]),"stderr_bytes":int(f[8]),
+                                     "bats_status":int(f[9]),"bats_output_bytes":int(f[10]),
+                                     "separate_status":int(f[11]),"separate_stdout_bytes":int(f[12]),
+                                     "separate_stderr_bytes":int(f[13]),"metadata_stable":int(f[14]),
+                                     "fd_start":f[15],"fd_end":f[16],"producer_status":f[17],
+                                     "projection_sha256":f[18]})
+                  wanted = {(mode,case) for mode in ("passwd","group","nss") for case in CASES}
+                  check(len(matrix) == 72 and {(x["mode"],x["case"]) for x in matrix} == wanted,
+                        "matrix case coverage")
+                  results = re.findall(r'^(ok|not ok) ([0-9]+) bytes (passwd|group|nss) ([a-z0-9-]+)$',
+                                       raw, re.M)
+                  check(len(results) == 72 and all(status == "ok" for status,*_ in results),
+                        "matrix Bats assertions")
+                  check([(int(n)) for _,n,_,_ in results] == list(range(1,73)),
+                        "matrix ordinal coverage")
+                  check({(mode,case) for _,_,mode,case in results} == wanted,
+                        "matrix result names")
+                  check("byte_matrix expected=72 measured=72 results=72 bats_exit=0" in raw and rc == 0,
+                        "matrix process status")
+                  report.update(selected=72, passed=72, failed=0, skipped=0,
+                                legacy_tests=legacy_results, legacy_metrics=legacy_metrics,
+                                cases=matrix, valid_projection_references=REFERENCES)
+              else:
+                  check(False, "unknown qualification kind")
+              report["ok"] = True
+          except Exception as error:
+              report["reason"] = str(error) if type(error) is RuntimeError else type(error).__name__
+          pathlib.Path(output_path).write_text(json.dumps(report, indent=2))
+          print("QUALIFICATION_JSON|" + json.dumps(report, sort_keys=True))
+          sys.exit(0 if report["ok"] else 1)
+          PY
+
+      - name: Identity library - all 300 tests
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          rc=0
+          bats --tap tests/identity_observation.bats > "$RUNNER_TEMP/identity-private/library.tap" 2>&1 || rc=$?
+          python3 "$RUNNER_TEMP/identity-result-check.py" tap \
+            "$RUNNER_TEMP/identity-private/library.tap" "$RUNNER_TEMP/identity-qualification/library.json" \
+            tests/identity_observation.bats "$rc"
+
+      - name: Matrix - SIGPIPE default
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          rc=0
+          env --default-signal=PIPE bash diagnostics/identity_ci302.sh \
+            > "$RUNNER_TEMP/identity-private/matrix-default.log" 2>&1 || rc=$?
+          python3 "$RUNNER_TEMP/identity-result-check.py" matrix \
+            "$RUNNER_TEMP/identity-private/matrix-default.log" "$RUNNER_TEMP/identity-qualification/matrix-default.json" \
+            default "$rc"
+
+      - name: Matrix - SIGPIPE ignored
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          rc=0
+          env --ignore-signal=PIPE bash diagnostics/identity_ci302.sh \
+            > "$RUNNER_TEMP/identity-private/matrix-ignore.log" 2>&1 || rc=$?
+          python3 "$RUNNER_TEMP/identity-result-check.py" matrix \
+            "$RUNNER_TEMP/identity-private/matrix-ignore.log" "$RUNNER_TEMP/identity-qualification/matrix-ignore.json" \
+            ignore "$rc"
+
+      - name: CIS 7.2.9 - all 95 tests
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          rc=0
+          bats --tap tests/cis_7_2_9.bats > "$RUNNER_TEMP/identity-private/cis729.tap" 2>&1 || rc=$?
+          python3 "$RUNNER_TEMP/identity-result-check.py" tap \
+            "$RUNNER_TEMP/identity-private/cis729.tap" "$RUNNER_TEMP/identity-qualification/cis729.json" \
+            tests/cis_7_2_9.bats "$rc"
+
+      - name: Filesystem - all 86 tests
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          rc=0
+          bats --tap tests/filesystem_observation.bats > "$RUNNER_TEMP/identity-private/filesystem.tap" 2>&1 || rc=$?
+          python3 "$RUNNER_TEMP/identity-result-check.py" tap \
+            "$RUNNER_TEMP/identity-private/filesystem.tap" "$RUNNER_TEMP/identity-qualification/filesystem.json" \
+            tests/filesystem_observation.bats "$rc"
+
+      - name: Confirm complete qualification
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ["RUNNER_TEMP"], "identity-qualification")
+          names = ("library","matrix-default","matrix-ignore","cis729","filesystem")
+          reports = [json.loads((root/(name+".json")).read_text()) for name in names]
+          assert all(report["ok"] and report["failed"] == report["skipped"] == 0 for report in reports)
+          assert sum(report["passed"] for report in reports) == 625
+          repeated = sum(sum(report.get("legacy_tests",{}).values()) for report in reports)
+          assert repeated == 80
+          total = {"mandatory_passed":625, "additional_legacy_passed":repeated,
+                   "total_test_executions_passed":705, "failed":0, "skipped":0}
+          (root/"total.json").write_text(json.dumps(total,indent=2))
+          print("QUALIFICATION_TOTAL|" + json.dumps(total))
+          PY
+
+      - name: Preserve sanitized qualification evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: identity-pipe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/identity-qualification
+          if-no-files-found: error
+          retention-days: 14
